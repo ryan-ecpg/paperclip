@@ -519,6 +519,113 @@ describe("issue execution policy transitions", () => {
   describe("access control", () => {
     const policy = twoStagePolicy();
     const reviewStageId = policy.stages[0].id;
+    const boardPolicy = makePolicy([
+      { type: "review", participants: [{ type: "user", userId: boardUserId }] },
+      { type: "approval", participants: [{ type: "user", userId: ctoUserId }] },
+    ]);
+    const boardReviewStageId = boardPolicy.stages[0].id;
+    const activeBoardApprovalIssue = {
+      status: "in_review",
+      assigneeAgentId: null,
+      assigneeUserId: boardUserId,
+      executionPolicy: boardPolicy,
+      executionState: {
+        status: "pending",
+        currentStageId: boardReviewStageId,
+        currentStageIndex: 0,
+        currentStageType: "review",
+        currentParticipant: { type: "user", userId: boardUserId, agentId: null },
+        returnAssignee: { type: "agent", agentId: coderAgentId, userId: null },
+        completedStageIds: [],
+        lastDecisionId: null,
+        lastDecisionOutcome: null,
+      } satisfies IssueExecutionState,
+    };
+
+    it("active participant can comment and reassign without advancing the stage", () => {
+      const result = applyIssueExecutionPolicyTransition({
+        issue: activeBoardApprovalIssue,
+        policy: boardPolicy,
+        requestedStatus: undefined,
+        requestedAssigneePatch: { assigneeAgentId: ctoAgentId },
+        actor: { userId: boardUserId },
+        commentBody: "Looping in another reviewer",
+      });
+
+      expect(result).toEqual({ patch: {} });
+    });
+
+    it("non-participant cannot comment and reassign the active stage", () => {
+      expect(() =>
+        applyIssueExecutionPolicyTransition({
+          issue: activeBoardApprovalIssue,
+          policy: boardPolicy,
+          requestedStatus: undefined,
+          requestedAssigneePatch: { assigneeAgentId: ctoAgentId },
+          actor: { userId: ctoUserId },
+          commentBody: "Trying to take over",
+        }),
+      ).toThrow("Only the active reviewer or approver can advance");
+    });
+
+    it("active participant approval still records an approved decision", () => {
+      const result = applyIssueExecutionPolicyTransition({
+        issue: activeBoardApprovalIssue,
+        policy: boardPolicy,
+        requestedStatus: "done",
+        requestedAssigneePatch: {},
+        actor: { userId: boardUserId },
+        commentBody: "Approved",
+      });
+
+      expect(result.decision).toMatchObject({
+        stageId: boardReviewStageId,
+        stageType: "review",
+        outcome: "approved",
+      });
+      expect(result.patch.executionState).toMatchObject({
+        currentStageType: "approval",
+        lastDecisionOutcome: "approved",
+      });
+    });
+
+    it("active participant changes request still records a changes requested decision", () => {
+      const result = applyIssueExecutionPolicyTransition({
+        issue: activeBoardApprovalIssue,
+        policy: boardPolicy,
+        requestedStatus: "in_progress",
+        requestedAssigneePatch: {},
+        actor: { userId: boardUserId },
+        commentBody: "Needs revision",
+      });
+
+      expect(result.decision).toMatchObject({
+        stageId: boardReviewStageId,
+        stageType: "review",
+        outcome: "changes_requested",
+      });
+      expect(result.patch).toMatchObject({
+        status: "in_progress",
+        assigneeAgentId: coderAgentId,
+        executionState: {
+          status: "changes_requested",
+          lastDecisionOutcome: "changes_requested",
+        },
+      });
+    });
+
+    it("active participant can comment and clear the assignee without advancing the stage", () => {
+      const result = applyIssueExecutionPolicyTransition({
+        issue: activeBoardApprovalIssue,
+        policy: boardPolicy,
+        requestedStatus: undefined,
+        requestedAssigneePatch: { assigneeAgentId: null, assigneeUserId: null },
+        actor: { userId: boardUserId },
+        commentBody: "Leaving unassigned for now",
+      });
+
+      expect(result).toEqual({ patch: {} });
+    });
 
     it("non-participant cannot advance the active stage", () => {
       expect(() =>

@@ -1682,16 +1682,11 @@ export function buildInviteOnboardingTextDocument(
     3) IMPORTANT: Don't accidentally drop the token when generating JSON
     If you build JSON with Node, pass the token explicitly (argv), don't rely on an un-exported env var.
 
-    Do not echo or print token-bearing payloads to stdout. Write the join request body to a private temp file:
+    Safe payload build looks sort of like this (substitute where necessary):
 
-    BODY_FILE="$(mktemp)"
-    chmod 600 "$BODY_FILE"
-    node -e '
-      const fs = require("node:fs");
+    BODY="$(node -e '
       const token = process.argv[1];
-      const outputPath = process.argv[2];
       if (!token) process.exit(2);
-      if (!outputPath) process.exit(3);
       const body = {
         requestType: "agent",
         agentName: "OpenClaw",
@@ -1707,8 +1702,8 @@ export function buildInviteOnboardingTextDocument(
           scopes: ["operator.admin"]
         }
       };
-      fs.writeFileSync(outputPath, JSON.stringify(body));
-    ' "$TOKEN" "$BODY_FILE"
+      process.stdout.write(JSON.stringify(body));
+    ' "$TOKEN")"
 
     ## Step 1: Submit agent join request
     ${onboarding.registrationEndpoint.method} ${

@@ -54,6 +54,9 @@ describe("buildInviteOnboardingTextDocument", () => {
     expect(text).toContain("PAPERCLIP_API_KEY");
     expect(text).toContain("saved token field");
     expect(text).toContain("Gateway token unexpectedly short");
+    expect(text).toContain("Do not echo or print token-bearing payloads to stdout");
+    expect(text).toContain('BODY_FILE="$(mktemp)"');
+    expect(text).not.toContain("process.stdout.write(JSON.stringify(body))");
   });
 
   it("includes loopback diagnostics for authenticated/private onboarding", () => {

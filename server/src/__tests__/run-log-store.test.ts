@@ -56,4 +56,39 @@ describe("run log store", () => {
     expect(result.content).not.toContain("json-secret-value");
     expect(result.content).not.toContain(jwt);
   });
+
+  it("redacts structured Codex command output before persistence", async () => {
+    await withTempRunLogBase();
+    const store = getRunLogStore();
+    const handle = await store.begin({
+      companyId: "company-1",
+      agentId: "agent-1",
+      runId: "run-1",
+    });
+    const sbp = `sbp_${"a".repeat(24)}`;
+    const sbSecret = `sb_secret_${"b".repeat(24)}`;
+    const ghp = `ghp_${"c".repeat(36)}`;
+
+    await store.append(handle, {
+      stream: "stdout",
+      ts: "2026-05-01T00:00:00.000Z",
+      chunk: "command completed",
+      item: {
+        completed: {
+          item: {
+            type: "command_execution",
+            command: `TOKEN=${sbp} node script.js`,
+            aggregated_output: [`supabase ${sbSecret}`, `github ${ghp}`].join("\n"),
+          },
+        },
+      },
+    });
+
+    const result = await store.read(handle);
+
+    expect(result.content).toContain("***REDACTED***");
+    expect(result.content).not.toContain(sbp);
+    expect(result.content).not.toContain(sbSecret);
+    expect(result.content).not.toContain(ghp);
+  });
 });

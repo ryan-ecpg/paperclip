@@ -32,7 +32,7 @@ export interface RunLogStore {
   begin(input: { companyId: string; agentId: string; runId: string }): Promise<RunLogHandle>;
   append(
     handle: RunLogHandle,
-    event: { stream: "stdout" | "stderr" | "system"; chunk: string; ts: string },
+    event: { stream: "stdout" | "stderr" | "system"; chunk: string; ts: string } & Record<string, unknown>,
   ): Promise<number>;
   finalize(handle: RunLogHandle): Promise<RunLogFinalizeSummary>;
   read(handle: RunLogHandle, opts?: RunLogReadOptions): Promise<RunLogReadResult>;
@@ -49,6 +49,18 @@ function resolveWithin(basePath: string, relativePath: string) {
     throw new Error("Invalid log path");
   }
   return resolved;
+}
+
+function redactRunLogEventValue(value: unknown): unknown {
+  if (typeof value === "string") return redactSensitiveText(value);
+  if (Array.isArray(value)) return value.map(redactRunLogEventValue);
+  if (typeof value !== "object" || value === null) return value;
+
+  const redacted: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    redacted[key] = redactRunLogEventValue(nestedValue);
+  }
+  return redacted;
 }
 
 function createLocalFileRunLogStore(basePath: string): RunLogStore {
@@ -110,11 +122,7 @@ function createLocalFileRunLogStore(basePath: string): RunLogStore {
     async append(handle, event) {
       if (handle.store !== "local_file") return 0;
       const absPath = resolveWithin(basePath, handle.logRef);
-      const line = JSON.stringify({
-        ts: event.ts,
-        stream: event.stream,
-        chunk: redactSensitiveText(event.chunk),
-      });
+      const line = JSON.stringify(redactRunLogEventValue(event));
       const persisted = `${line}\n`;
       await fs.appendFile(absPath, persisted, "utf8");
       return Buffer.byteLength(persisted, "utf8");

@@ -4,7 +4,7 @@ import {
   redactCurrentUserText,
   redactCurrentUserValue,
 } from "../log-redaction.js";
-import { REDACTED_EVENT_VALUE, redactSensitiveText } from "../redaction.js";
+import { REDACTED_EVENT_VALUE, redactSensitiveText, redactSensitiveValue } from "../redaction.js";
 
 describe("log redaction", () => {
   it("redacts the active username inside home-directory paths", () => {
@@ -117,5 +117,30 @@ describe("log redaction", () => {
       expect(result, fixture.label).toContain(REDACTED_EVENT_VALUE);
       expect(result, fixture.label).not.toContain(fixture.leakedTail);
     }
+  });
+
+  it("recursively redacts secret-shaped strings in structured values", () => {
+    const tokenTail = "a".repeat(32);
+    const nestedValue = {
+      result: `structured result carried sbp_${tokenTail}`,
+      tool_result: {
+        content: [
+          {
+            text: `escaped payload {\\"access_token\\":\\"ghp_${"b".repeat(32)}\\"}`,
+          },
+        ],
+      },
+      metadata: {
+        authorization: `Bearer ${["header12345", "payload12345", "signature12345"].join(".")}`,
+      },
+    };
+
+    const redacted = redactSensitiveValue(nestedValue);
+    const serialized = JSON.stringify(redacted);
+
+    expect(serialized).toContain(REDACTED_EVENT_VALUE);
+    expect(serialized).not.toContain(tokenTail);
+    expect(serialized).not.toContain("b".repeat(32));
+    expect(redacted.metadata.authorization).toBe(REDACTED_EVENT_VALUE);
   });
 });

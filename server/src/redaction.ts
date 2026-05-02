@@ -27,6 +27,7 @@ function sanitizeValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitizeValue);
   if (isSecretRefBinding(value)) return value;
   if (isPlainBinding(value)) return { type: "plain", value: sanitizeValue(value.value) };
+  if (typeof value === "string") return redactSensitiveText(value);
   if (!isPlainObject(value)) return value;
   return sanitizeRecord(value);
 }
@@ -83,4 +84,8 @@ export function redactSensitiveText(input: string): string {
     .replace(SUPABASE_ACCESS_TOKEN_TEXT_RE, REDACTED_EVENT_VALUE)
     .replace(SUPABASE_SECRET_KEY_TEXT_RE, REDACTED_EVENT_VALUE)
     .replace(JWT_TEXT_RE, REDACTED_EVENT_VALUE);
+}
+
+export function redactSensitiveValue<T>(value: T): T {
+  return sanitizeValue(value) as T;
 }

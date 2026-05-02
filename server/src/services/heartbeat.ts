@@ -113,7 +113,7 @@ import { recoveryService } from "./recovery/service.js";
 import { productivityReviewService } from "./productivity-review.js";
 import { withAgentStartLock } from "./agent-start-lock.js";
 import { redactCurrentUserText, redactCurrentUserValue } from "../log-redaction.js";
-import { redactSensitiveText } from "../redaction.js";
+import { redactSensitiveText, redactSensitiveValue } from "../redaction.js";
 import {
   hasSessionCompactionThresholds,
   resolveSessionCompactionPolicy,
@@ -2911,13 +2911,13 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
   ) {
     const currentUserRedactionOptions = await getCurrentUserRedactionOptions();
     const sanitizedMessage = event.message
-      ? redactCurrentUserText(event.message, currentUserRedactionOptions)
+      ? redactSensitiveText(redactCurrentUserText(event.message, currentUserRedactionOptions))
       : event.message;
     const boundedPayload = event.payload
       ? boundHeartbeatRunEventPayloadForStorage(event.payload)
       : event.payload;
     const sanitizedPayload = boundedPayload
-      ? redactCurrentUserValue(boundedPayload, currentUserRedactionOptions)
+      ? redactSensitiveValue(redactCurrentUserValue(boundedPayload, currentUserRedactionOptions))
       : boundedPayload;
 
     await db.insert(heartbeatRunEvents).values({
@@ -5611,12 +5611,19 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       }
       const runErrorMessage =
         outcome === "cancelled"
-          ? (latestRun?.error ?? adapterResult.errorMessage ?? "Cancelled")
+          ? redactSensitiveText(
+              redactCurrentUserText(
+                latestRun?.error ?? adapterResult.errorMessage ?? "Cancelled",
+                currentUserRedactionOptions,
+              ),
+            )
           : outcome === "succeeded"
             ? null
-            : redactCurrentUserText(
-                adapterResult.errorMessage ?? (outcome === "timed_out" ? "Timed out" : "Adapter failed"),
-                currentUserRedactionOptions,
+            : redactSensitiveText(
+                redactCurrentUserText(
+                  adapterResult.errorMessage ?? (outcome === "timed_out" ? "Timed out" : "Adapter failed"),
+                  currentUserRedactionOptions,
+                ),
               );
       const runErrorCode =
         outcome === "timed_out"

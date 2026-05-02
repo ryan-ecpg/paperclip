@@ -1,3 +1,5 @@
+import { redactSensitiveValue } from "../redaction.js";
+
 export const HEARTBEAT_RUN_RESULT_SUMMARY_MAX_CHARS = 500;
 export const HEARTBEAT_RUN_RESULT_OUTPUT_MAX_CHARS = 4_096;
 export const HEARTBEAT_RUN_SAFE_RESULT_JSON_MAX_BYTES = 64 * 1024;
@@ -24,14 +26,16 @@ export function mergeHeartbeatRunResultJson(
   const normalizedSummary = readCommentText(summary);
   const baseResult =
     resultJson && typeof resultJson === "object" && !Array.isArray(resultJson)
-      ? resultJson
+      ? redactSensitiveValue(resultJson)
       : null;
 
   if (!baseResult) {
-    return normalizedSummary ? { summary: normalizedSummary } : null;
+    return normalizedSummary ? { summary: redactSensitiveValue(normalizedSummary) } : null;
   }
 
-  if (!normalizedSummary) {
+  const redactedSummary = normalizedSummary ? redactSensitiveValue(normalizedSummary) : null;
+
+  if (!redactedSummary) {
     return baseResult;
   }
 
@@ -41,7 +45,7 @@ export function mergeHeartbeatRunResultJson(
 
   return {
     ...baseResult,
-    summary: normalizedSummary,
+    summary: redactedSummary,
   };
 }
 

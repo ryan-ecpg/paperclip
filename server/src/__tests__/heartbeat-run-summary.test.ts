@@ -4,6 +4,7 @@ import {
   buildHeartbeatRunIssueComment,
   mergeHeartbeatRunResultJson,
 } from "../services/heartbeat-run-summary.js";
+import { REDACTED_EVENT_VALUE } from "../redaction.js";
 
 describe("summarizeHeartbeatRunResultJson", () => {
   it("truncates text fields and preserves cost aliases", () => {
@@ -94,5 +95,25 @@ describe("mergeHeartbeatRunResultJson", () => {
       summary: "adapter result",
       stdout: "raw stdout",
     });
+  });
+
+  it("redacts structured adapter result fields and fallback summaries before storage", () => {
+    const supabaseTail = "a".repeat(32);
+    const githubTail = "b".repeat(32);
+    const merged = mergeHeartbeatRunResultJson(
+      {
+        result: `tool result contained sbp_${supabaseTail}`,
+        nested: {
+          content: `escaped {\\"access_token\\":\\"ghp_${githubTail}\\"}`,
+        },
+      },
+      `summary contained sb_secret_${"c".repeat(32)}`,
+    );
+    const serialized = JSON.stringify(merged);
+
+    expect(serialized).toContain(REDACTED_EVENT_VALUE);
+    expect(serialized).not.toContain(supabaseTail);
+    expect(serialized).not.toContain(githubTail);
+    expect(buildHeartbeatRunIssueComment(merged)).toContain(REDACTED_EVENT_VALUE);
   });
 });

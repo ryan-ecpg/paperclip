@@ -4,6 +4,7 @@ import {
   redactCurrentUserText,
   redactCurrentUserValue,
 } from "../log-redaction.js";
+import { REDACTED_EVENT_VALUE, redactSensitiveText } from "../redaction.js";
 
 describe("log redaction", () => {
   it("redacts the active username inside home-directory paths", () => {
@@ -70,5 +71,51 @@ describe("log redaction", () => {
   it("skips redaction when disabled", () => {
     const input = "cwd=/Users/paperclipuser/paperclip";
     expect(redactCurrentUserText(input, { enabled: false })).toBe(input);
+  });
+
+  it("redacts MF-2 secret shapes before publishing live log chunks", () => {
+    const fixtures = [
+      {
+        label: "anthropic key",
+        chunk: `Anthropic key sk-ant-api03-${"a".repeat(32)}`,
+        leakedTail: "a".repeat(32),
+      },
+      {
+        label: "supabase pat",
+        chunk: `Supabase PAT sbp_${"b".repeat(32)}`,
+        leakedTail: "b".repeat(32),
+      },
+      {
+        label: "supabase secret key",
+        chunk: `Supabase secret sb_secret_${"c".repeat(32)}`,
+        leakedTail: "c".repeat(32),
+      },
+      {
+        label: "jwt",
+        chunk: "Token header123.payload123.signature123",
+        leakedTail: "signature123",
+      },
+      {
+        label: "pem block",
+        chunk: [
+          "-----BEGIN PRIVATE KEY-----",
+          "synthetic-private-key-material",
+          "-----END PRIVATE KEY-----",
+        ].join("\n"),
+        leakedTail: "synthetic-private-key-material",
+      },
+    ];
+
+    for (const fixture of fixtures) {
+      const result = redactSensitiveText(
+        redactCurrentUserText(fixture.chunk, {
+          userNames: ["paperclipuser"],
+          homeDirs: ["/home/paperclipuser"],
+        }),
+      );
+
+      expect(result, fixture.label).toContain(REDACTED_EVENT_VALUE);
+      expect(result, fixture.label).not.toContain(fixture.leakedTail);
+    }
   });
 });

@@ -55,6 +55,11 @@ function resolveWithin(basePath: string, relativePath: string) {
 const MAX_REDACTION_TAIL_CHARS = MAX_PERSISTED_LOG_CHUNK_CHARS;
 
 function createLocalFileRunLogStore(basePath: string): RunLogStore {
+  // Keep the redaction tail at least as large as the largest single persisted chunk so split anchors never hit disk.
+  if (MAX_REDACTION_TAIL_CHARS < MAX_PERSISTED_LOG_CHUNK_CHARS) {
+    throw new Error("Run-log redaction tail must cover the maximum persisted log chunk size");
+  }
+
   const redactionTails = new Map<string, string>();
 
   async function ensureDir(relativeDir: string) {

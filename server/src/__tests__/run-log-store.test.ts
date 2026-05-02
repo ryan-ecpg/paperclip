@@ -96,6 +96,69 @@ describe("run log store", () => {
     expect(content).not.toContain("END RSA PRIVATE KEY");
   });
 
+  it("redacts a PEM block split after a 4097-character chunk", async () => {
+    await withTempRunLogBase();
+    const store = getRunLogStore();
+    const handle = await store.begin({
+      companyId: "company-1",
+      agentId: "agent-1",
+      runId: "run-1",
+    });
+    const pemPrefix = "split-pem-key-material-canary-pos0-";
+    const firstChunk = `-----BEGIN RSA PRIVATE KEY-----\n${pemPrefix}`.padEnd(4097, "x");
+
+    await store.append(handle, {
+      stream: "stdout",
+      ts: "2026-05-01T00:00:00.000Z",
+      chunk: firstChunk,
+    });
+    await store.append(handle, {
+      stream: "stdout",
+      ts: "2026-05-01T00:00:01.000Z",
+      chunk: "\n-----END RSA PRIVATE KEY-----\n",
+    });
+    await store.finalize(handle);
+
+    const content = await readRawLog(handle);
+
+    expect(content).toContain("***REDACTED***");
+    expect(content).not.toContain(pemPrefix);
+    expect(content).not.toContain("BEGIN RSA PRIVATE KEY");
+    expect(content).not.toContain("END RSA PRIVATE KEY");
+  });
+
+  it("redacts a PEM block whose BEGIN anchor lands after a 100-character preamble in an 8192-character chunk", async () => {
+    await withTempRunLogBase();
+    const store = getRunLogStore();
+    const handle = await store.begin({
+      companyId: "company-1",
+      agentId: "agent-1",
+      runId: "run-1",
+    });
+    const preamble = "p".repeat(100);
+    const pemPrefix = "split-pem-key-material-canary-pos100-";
+    const firstChunk = `${preamble}-----BEGIN RSA PRIVATE KEY-----\n${pemPrefix}`.padEnd(8192, "x");
+
+    await store.append(handle, {
+      stream: "stdout",
+      ts: "2026-05-01T00:00:00.000Z",
+      chunk: firstChunk,
+    });
+    await store.append(handle, {
+      stream: "stdout",
+      ts: "2026-05-01T00:00:01.000Z",
+      chunk: "\n-----END RSA PRIVATE KEY-----\n",
+    });
+    await store.finalize(handle);
+
+    const content = await readRawLog(handle);
+
+    expect(content).toContain("***REDACTED***");
+    expect(content).not.toContain(pemPrefix);
+    expect(content).not.toContain("BEGIN RSA PRIVATE KEY");
+    expect(content).not.toContain("END RSA PRIVATE KEY");
+  });
+
   it("keeps enough redaction tail for a PEM block split across max-sized persisted chunks", async () => {
     await withTempRunLogBase();
     const store = getRunLogStore();
@@ -128,7 +191,7 @@ describe("run log store", () => {
     expect(content).not.toContain("END RSA PRIVATE KEY");
   });
 
-  it("keeps enough redaction tail for a JWT split after an upstream-sized chunk", async () => {
+  it("redacts a JWT whose anchor lands above the previous 4096-character tail", async () => {
     await withTempRunLogBase();
     const store = getRunLogStore();
     const handle = await store.begin({
@@ -141,7 +204,7 @@ describe("run log store", () => {
     const jwtSignature = "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
     const jwt = `${jwtHeader}.${jwtPayload}.${jwtSignature}`;
     const firstTokenPart = ` token ${jwtHeader}.${jwtPayload.slice(0, 12)}`;
-    const firstChunk = `${"p".repeat(MAX_PERSISTED_LOG_CHUNK_CHARS - firstTokenPart.length)}${firstTokenPart}`;
+    const firstChunk = `${"p".repeat(5000)}${firstTokenPart}`;
 
     await store.append(handle, {
       stream: "stdout",

@@ -199,12 +199,14 @@ describe("run log store", () => {
       agentId: "agent-1",
       runId: "run-1",
     });
+    const preamble = "p".repeat(100);
+    const tokenLabel = " token ";
     const jwtHeader = "eyJhbGciOiJIUzI1NiJ9";
-    const jwtPayload = "eyJzdWIiOiJ1cHN0cmVhbS1zaXplZC1qd3QtY2FuYXJ5In0";
+    const firstPayloadChars = 8192 - preamble.length - tokenLabel.length - jwtHeader.length - 1;
+    const jwtPayload = `eyJ${"a".repeat(firstPayloadChars + 128)}upstream-sized-jwt-canary`;
     const jwtSignature = "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
     const jwt = `${jwtHeader}.${jwtPayload}.${jwtSignature}`;
-    const firstTokenPart = ` token ${jwtHeader}.${jwtPayload.slice(0, 12)}`;
-    const firstChunk = `${"p".repeat(5000)}${firstTokenPart}`;
+    const firstChunk = `${preamble}${tokenLabel}${jwtHeader}.${jwtPayload.slice(0, firstPayloadChars)}`;
 
     await store.append(handle, {
       stream: "stdout",
@@ -214,7 +216,7 @@ describe("run log store", () => {
     await store.append(handle, {
       stream: "stdout",
       ts: "2026-05-01T00:00:01.000Z",
-      chunk: `${jwtPayload.slice(12)}.${jwtSignature}\n`,
+      chunk: `${jwtPayload.slice(firstPayloadChars)}.${jwtSignature}\n`,
     });
     await store.finalize(handle);
 
@@ -222,9 +224,9 @@ describe("run log store", () => {
 
     expect(content).toContain("***REDACTED***");
     expect(content).not.toContain(jwt);
+    expect(content).not.toContain(jwtHeader);
     expect(content).not.toContain(jwtPayload);
-    expect(content).not.toContain(jwtPayload.slice(0, 12));
-    expect(content).not.toContain(jwtPayload.slice(12));
+    expect(content).not.toContain("upstream-sized-jwt-canary");
   });
 
   it("redacts JWTs split across append chunks", async () => {

@@ -1,12 +1,16 @@
 const SECRET_PAYLOAD_KEY_RE =
   /(api[-_]?key|access[-_]?token|auth(?:_?token)?|authorization|bearer|secret|passwd|password|credential|jwt|private[-_]?key|cookie|connectionstring)/i;
 const JWT_VALUE_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)?$/;
-const JWT_TEXT_RE = /\b[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]{8,})?\b/g;
+const SECRET_TEXT_LEFT_BOUNDARY = String.raw`(?:(?<![A-Za-z0-9_])|(?<=\\[a-zA-Z]))`;
+const JWT_TEXT_RE = new RegExp(
+  `${SECRET_TEXT_LEFT_BOUNDARY}[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}(?:\\.[A-Za-z0-9_-]{8,})?\\b`,
+  "g",
+);
 const PEM_BLOCK_TEXT_RE = /-----BEGIN [^-]+-----[\s\S]+?-----END [^-]+-----/g;
-const OPENAI_KEY_TEXT_RE = /\bsk-[A-Za-z0-9_-]{12,}\b/g;
-const GITHUB_TOKEN_TEXT_RE = /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/g;
-const SUPABASE_ACCESS_TOKEN_TEXT_RE = /\bsbp_[A-Za-z0-9_-]{20,}\b/g;
-const SUPABASE_SECRET_KEY_TEXT_RE = /\bsb_secret_[A-Za-z0-9_-]{20,}\b/g;
+const OPENAI_KEY_TEXT_RE = new RegExp(`${SECRET_TEXT_LEFT_BOUNDARY}sk-[A-Za-z0-9_-]{12,}\\b`, "g");
+const GITHUB_TOKEN_TEXT_RE = new RegExp(`${SECRET_TEXT_LEFT_BOUNDARY}gh[pousr]_[A-Za-z0-9_]{20,}\\b`, "g");
+const SUPABASE_ACCESS_TOKEN_TEXT_RE = new RegExp(`${SECRET_TEXT_LEFT_BOUNDARY}sbp_[A-Za-z0-9_-]{20,}\\b`, "g");
+const SUPABASE_SECRET_KEY_TEXT_RE = new RegExp(`${SECRET_TEXT_LEFT_BOUNDARY}sb_secret_[A-Za-z0-9_-]{20,}\\b`, "g");
 const AUTHORIZATION_BEARER_TEXT_RE = /(\bAuthorization\s*:\s*Bearer\s+)[^\s"'`]+/gi;
 const ENV_SECRET_ASSIGNMENT_TEXT_RE =
   /(\b[A-Za-z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|AUTHORIZATION|JWT)[A-Za-z0-9_]*\s*=\s*)[^\s"'`]+/gi;

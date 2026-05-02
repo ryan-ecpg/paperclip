@@ -51,7 +51,8 @@ function resolveWithin(basePath: string, relativePath: string) {
   return resolved;
 }
 
-const MAX_REDACTION_TAIL_CHARS = 4096;
+const MAX_UPSTREAM_PERSISTED_LOG_CHUNK_CHARS = 64 * 1024;
+const MAX_REDACTION_TAIL_CHARS = MAX_UPSTREAM_PERSISTED_LOG_CHUNK_CHARS;
 
 function createLocalFileRunLogStore(basePath: string): RunLogStore {
   const redactionTails = new Map<string, string>();

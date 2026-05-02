@@ -95,6 +95,37 @@ describe("run log store", () => {
     expect(content).not.toContain("END RSA PRIVATE KEY");
   });
 
+  it("keeps enough redaction tail for a PEM block split across max-sized persisted chunks", async () => {
+    await withTempRunLogBase();
+    const store = getRunLogStore();
+    const handle = await store.begin({
+      companyId: "company-1",
+      agentId: "agent-1",
+      runId: "run-1",
+    });
+    const pemPrefix = "wide-tail-pem-key-material-canary-";
+    const pemBody = `${pemPrefix}${"x".repeat(5000)}`;
+
+    await store.append(handle, {
+      stream: "stdout",
+      ts: "2026-05-01T00:00:00.000Z",
+      chunk: `-----BEGIN RSA PRIVATE KEY-----\n${pemBody}`,
+    });
+    await store.append(handle, {
+      stream: "stdout",
+      ts: "2026-05-01T00:00:01.000Z",
+      chunk: "\n-----END RSA PRIVATE KEY-----\n",
+    });
+    await store.finalize(handle);
+
+    const content = await readRawLog(handle);
+
+    expect(content).toContain("***REDACTED***");
+    expect(content).not.toContain(pemPrefix);
+    expect(content).not.toContain("BEGIN RSA PRIVATE KEY");
+    expect(content).not.toContain("END RSA PRIVATE KEY");
+  });
+
   it("redacts JWTs split across append chunks", async () => {
     await withTempRunLogBase();
     const store = getRunLogStore();

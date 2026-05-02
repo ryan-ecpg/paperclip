@@ -143,4 +143,32 @@ describe("log redaction", () => {
     expect(serialized).not.toContain("b".repeat(32));
     expect(redacted.metadata.authorization).toBe(REDACTED_EVENT_VALUE);
   });
+
+  it.each([
+    {
+      label: "supabase pat",
+      token: `sbp_${"b".repeat(32)}`,
+      leakedTail: "b".repeat(32),
+    },
+    {
+      label: "supabase secret key",
+      token: `sb_secret_${"c".repeat(32)}`,
+      leakedTail: "c".repeat(32),
+    },
+    {
+      label: "github token",
+      token: `ghp_${"d".repeat(32)}`,
+      leakedTail: "d".repeat(32),
+    },
+    {
+      label: "jwt",
+      token: ["header1234", "payload1234", "signature1234"].join("."),
+      leakedTail: "signature1234",
+    },
+  ])("redacts $label after escaped JSON newlines", ({ token, leakedTail }) => {
+    const result = redactSensitiveText(`assistant text before\\n${token}`);
+
+    expect(result).toContain(REDACTED_EVENT_VALUE);
+    expect(result).not.toContain(leakedTail);
+  });
 });

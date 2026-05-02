@@ -95,6 +95,9 @@ describe("redaction", () => {
       `Anthropic key ${anthropicKey}`,
       ...privateKeys,
       `session=${jwt}`,
+      "Set the SUPABASE_SERVICE_ROLE_KEY env var with the value from BWS",
+      "GITHUB_APP_PRIVATE_KEY is documented in the README.",
+      "Run BWS_ACCESS_TOKEN through bws.",
       "Non-secrets: ask-question whisk-broom",
     ].join("\n");
 
@@ -112,6 +115,9 @@ describe("redaction", () => {
     expect(result).not.toContain("private-key-material");
     expect(result).not.toContain("ec-private-key-material");
     expect(result).not.toContain(jwt);
+    expect(result).toContain("SUPABASE_SERVICE_ROLE_KEY env var");
+    expect(result).toContain("GITHUB_APP_PRIVATE_KEY is documented");
+    expect(result).toContain("BWS_ACCESS_TOKEN through bws");
     expect(result).toContain("ask-question");
     expect(result).toContain("whisk-broom");
   });

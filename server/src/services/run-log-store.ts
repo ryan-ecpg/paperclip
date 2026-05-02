@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { notFound } from "../errors.js";
 import { resolvePaperclipInstanceRoot } from "../home-paths.js";
 import { redactSensitiveText } from "../redaction.js";
+import { MAX_PERSISTED_LOG_CHUNK_CHARS } from "./run-log-limits.js";
 
 export type RunLogStoreType = "local_file";
 
@@ -63,10 +64,68 @@ function redactRunLogEventValue(value: unknown): unknown {
   return redacted;
 }
 
+const MAX_REDACTION_TAIL_CHARS = MAX_PERSISTED_LOG_CHUNK_CHARS;
+
 function createLocalFileRunLogStore(basePath: string): RunLogStore {
+  // Keep the redaction tail at least as large as the largest single persisted chunk so split anchors never hit disk.
+  if (MAX_REDACTION_TAIL_CHARS < MAX_PERSISTED_LOG_CHUNK_CHARS) {
+    throw new Error("Run-log redaction tail must cover the maximum persisted log chunk size");
+  }
+
+  const redactionTails = new Map<string, string>();
+
   async function ensureDir(relativeDir: string) {
     const dir = resolveWithin(basePath, relativeDir);
     await fs.mkdir(dir, { recursive: true });
+  }
+
+  function redactionTailKey(handle: RunLogHandle, stream: string) {
+    return `${handle.logRef}:${stream}`;
+  }
+
+  function hasNonChunkEventFields(event: Record<string, unknown>) {
+    return Object.keys(event).some((key) => key !== "ts" && key !== "stream" && key !== "chunk");
+  }
+
+  async function appendRedacted(handle: RunLogHandle, event: { stream: "stdout" | "stderr" | "system"; chunk: string; ts: string }) {
+    if (!event.chunk) return 0;
+    const absPath = resolveWithin(basePath, handle.logRef);
+    const line = JSON.stringify({
+      ts: event.ts,
+      stream: event.stream,
+      chunk: event.chunk,
+    });
+    const persisted = `${line}\n`;
+    await fs.appendFile(absPath, persisted, "utf8");
+    return Buffer.byteLength(persisted, "utf8");
+  }
+
+  function redactWithTail(handle: RunLogHandle, event: { stream: "stdout" | "stderr" | "system"; chunk: string }) {
+    const key = redactionTailKey(handle, event.stream);
+    const previousTail = redactionTails.get(key) ?? "";
+    const redacted = redactSensitiveText(`${previousTail}${event.chunk}`);
+    const splitAt = Math.max(0, redacted.length - MAX_REDACTION_TAIL_CHARS);
+    const chunk = redacted.slice(0, splitAt);
+    const tail = redactSensitiveText(redacted.slice(splitAt));
+    if (tail) redactionTails.set(key, tail);
+    else redactionTails.delete(key);
+    return chunk;
+  }
+
+  async function flushRedactionTails(handle: RunLogHandle) {
+    let bytes = 0;
+    for (const stream of ["stdout", "stderr", "system"] as const) {
+      const key = redactionTailKey(handle, stream);
+      const tail = redactionTails.get(key);
+      redactionTails.delete(key);
+      if (!tail) continue;
+      bytes += await appendRedacted(handle, {
+        stream,
+        ts: new Date().toISOString(),
+        chunk: redactSensitiveText(tail),
+      });
+    }
+    return bytes;
   }
 
   async function readFileRange(filePath: string, offset: number, limitBytes: number): Promise<RunLogReadResult> {
@@ -115,14 +174,19 @@ function createLocalFileRunLogStore(basePath: string): RunLogStore {
 
       const absPath = resolveWithin(basePath, relPath);
       await fs.writeFile(absPath, "", "utf8");
+      for (const key of redactionTails.keys()) {
+        if (key.startsWith(`${relPath}:`)) redactionTails.delete(key);
+      }
 
       return { store: "local_file", logRef: relPath };
     },
 
     async append(handle, event) {
       if (handle.store !== "local_file") return 0;
+      const chunk = redactWithTail(handle, event);
+      if (!chunk && !hasNonChunkEventFields(event)) return 0;
       const absPath = resolveWithin(basePath, handle.logRef);
-      const line = JSON.stringify(redactRunLogEventValue(event));
+      const line = JSON.stringify(redactRunLogEventValue({ ...event, chunk }));
       const persisted = `${line}\n`;
       await fs.appendFile(absPath, persisted, "utf8");
       return Buffer.byteLength(persisted, "utf8");
@@ -135,10 +199,12 @@ function createLocalFileRunLogStore(basePath: string): RunLogStore {
       const absPath = resolveWithin(basePath, handle.logRef);
       const stat = await fs.stat(absPath).catch(() => null);
       if (!stat) throw notFound("Run log not found");
+      await flushRedactionTails(handle);
 
       const hash = await sha256File(absPath);
+      const finalStat = await fs.stat(absPath);
       return {
-        bytes: stat.size,
+        bytes: finalStat.size,
         sha256: hash,
         compressed: false,
       };

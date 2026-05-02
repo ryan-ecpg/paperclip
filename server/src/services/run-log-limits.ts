@@ -1,0 +1,1 @@
+export const MAX_PERSISTED_LOG_CHUNK_CHARS = 64 * 1024;

@@ -51,10 +51,59 @@ function resolveWithin(basePath: string, relativePath: string) {
   return resolved;
 }
 
+const MAX_REDACTION_TAIL_CHARS = 4096;
+
 function createLocalFileRunLogStore(basePath: string): RunLogStore {
+  const redactionTails = new Map<string, string>();
+
   async function ensureDir(relativeDir: string) {
     const dir = resolveWithin(basePath, relativeDir);
     await fs.mkdir(dir, { recursive: true });
+  }
+
+  function redactionTailKey(handle: RunLogHandle, stream: string) {
+    return `${handle.logRef}:${stream}`;
+  }
+
+  async function appendRedacted(handle: RunLogHandle, event: { stream: "stdout" | "stderr" | "system"; chunk: string; ts: string }) {
+    if (!event.chunk) return 0;
+    const absPath = resolveWithin(basePath, handle.logRef);
+    const line = JSON.stringify({
+      ts: event.ts,
+      stream: event.stream,
+      chunk: event.chunk,
+    });
+    const persisted = `${line}\n`;
+    await fs.appendFile(absPath, persisted, "utf8");
+    return Buffer.byteLength(persisted, "utf8");
+  }
+
+  function redactWithTail(handle: RunLogHandle, event: { stream: "stdout" | "stderr" | "system"; chunk: string }) {
+    const key = redactionTailKey(handle, event.stream);
+    const previousTail = redactionTails.get(key) ?? "";
+    const redacted = redactSensitiveText(`${previousTail}${event.chunk}`);
+    const splitAt = Math.max(0, redacted.length - MAX_REDACTION_TAIL_CHARS);
+    const chunk = redacted.slice(0, splitAt);
+    const tail = redactSensitiveText(redacted.slice(splitAt));
+    if (tail) redactionTails.set(key, tail);
+    else redactionTails.delete(key);
+    return chunk;
+  }
+
+  async function flushRedactionTails(handle: RunLogHandle) {
+    let bytes = 0;
+    for (const stream of ["stdout", "stderr", "system"] as const) {
+      const key = redactionTailKey(handle, stream);
+      const tail = redactionTails.get(key);
+      redactionTails.delete(key);
+      if (!tail) continue;
+      bytes += await appendRedacted(handle, {
+        stream,
+        ts: new Date().toISOString(),
+        chunk: redactSensitiveText(tail),
+      });
+    }
+    return bytes;
   }
 
   async function readFileRange(filePath: string, offset: number, limitBytes: number): Promise<RunLogReadResult> {
@@ -103,21 +152,18 @@ function createLocalFileRunLogStore(basePath: string): RunLogStore {
 
       const absPath = resolveWithin(basePath, relPath);
       await fs.writeFile(absPath, "", "utf8");
+      for (const key of redactionTails.keys()) {
+        if (key.startsWith(`${relPath}:`)) redactionTails.delete(key);
+      }
 
       return { store: "local_file", logRef: relPath };
     },
 
     async append(handle, event) {
       if (handle.store !== "local_file") return 0;
-      const absPath = resolveWithin(basePath, handle.logRef);
-      const line = JSON.stringify({
-        ts: event.ts,
-        stream: event.stream,
-        chunk: redactSensitiveText(event.chunk),
-      });
-      const persisted = `${line}\n`;
-      await fs.appendFile(absPath, persisted, "utf8");
-      return Buffer.byteLength(persisted, "utf8");
+      const chunk = redactWithTail(handle, event);
+      if (!chunk) return 0;
+      return appendRedacted(handle, { ...event, chunk });
     },
 
     async finalize(handle) {
@@ -127,10 +173,12 @@ function createLocalFileRunLogStore(basePath: string): RunLogStore {
       const absPath = resolveWithin(basePath, handle.logRef);
       const stat = await fs.stat(absPath).catch(() => null);
       if (!stat) throw notFound("Run log not found");
+      await flushRedactionTails(handle);
 
       const hash = await sha256File(absPath);
+      const finalStat = await fs.stat(absPath);
       return {
-        bytes: stat.size,
+        bytes: finalStat.size,
         sha256: hash,
         compressed: false,
       };

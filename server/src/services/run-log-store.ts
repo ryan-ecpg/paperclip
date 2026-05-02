@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { notFound } from "../errors.js";
 import { resolvePaperclipInstanceRoot } from "../home-paths.js";
 import { redactSensitiveText } from "../redaction.js";
+import { MAX_PERSISTED_LOG_CHUNK_CHARS } from "./run-log-limits.js";
 
 export type RunLogStoreType = "local_file";
 
@@ -51,8 +52,7 @@ function resolveWithin(basePath: string, relativePath: string) {
   return resolved;
 }
 
-const MAX_UPSTREAM_PERSISTED_LOG_CHUNK_CHARS = 64 * 1024;
-const MAX_REDACTION_TAIL_CHARS = MAX_UPSTREAM_PERSISTED_LOG_CHUNK_CHARS;
+const MAX_REDACTION_TAIL_CHARS = MAX_PERSISTED_LOG_CHUNK_CHARS;
 
 function createLocalFileRunLogStore(basePath: string): RunLogStore {
   const redactionTails = new Map<string, string>();

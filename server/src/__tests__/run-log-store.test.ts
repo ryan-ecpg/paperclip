@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { MAX_PERSISTED_LOG_CHUNK_CHARS } from "../services/run-log-limits.js";
 import { getRunLogStore } from "../services/run-log-store.js";
 
 describe("run log store", () => {
@@ -104,12 +105,13 @@ describe("run log store", () => {
       runId: "run-1",
     });
     const pemPrefix = "wide-tail-pem-key-material-canary-";
-    const pemBody = `${pemPrefix}${"x".repeat(5000)}`;
+    const pemBody = `${pemPrefix}${"x".repeat(MAX_PERSISTED_LOG_CHUNK_CHARS)}`;
+    const firstChunk = `-----BEGIN RSA PRIVATE KEY-----\n${pemBody}`.slice(0, MAX_PERSISTED_LOG_CHUNK_CHARS);
 
     await store.append(handle, {
       stream: "stdout",
       ts: "2026-05-01T00:00:00.000Z",
-      chunk: `-----BEGIN RSA PRIVATE KEY-----\n${pemBody}`,
+      chunk: firstChunk,
     });
     await store.append(handle, {
       stream: "stdout",
@@ -124,6 +126,42 @@ describe("run log store", () => {
     expect(content).not.toContain(pemPrefix);
     expect(content).not.toContain("BEGIN RSA PRIVATE KEY");
     expect(content).not.toContain("END RSA PRIVATE KEY");
+  });
+
+  it("keeps enough redaction tail for a JWT split after an upstream-sized chunk", async () => {
+    await withTempRunLogBase();
+    const store = getRunLogStore();
+    const handle = await store.begin({
+      companyId: "company-1",
+      agentId: "agent-1",
+      runId: "run-1",
+    });
+    const jwtHeader = "eyJhbGciOiJIUzI1NiJ9";
+    const jwtPayload = "eyJzdWIiOiJ1cHN0cmVhbS1zaXplZC1qd3QtY2FuYXJ5In0";
+    const jwtSignature = "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+    const jwt = `${jwtHeader}.${jwtPayload}.${jwtSignature}`;
+    const firstTokenPart = ` token ${jwtHeader}.${jwtPayload.slice(0, 12)}`;
+    const firstChunk = `${"p".repeat(MAX_PERSISTED_LOG_CHUNK_CHARS - firstTokenPart.length)}${firstTokenPart}`;
+
+    await store.append(handle, {
+      stream: "stdout",
+      ts: "2026-05-01T00:00:00.000Z",
+      chunk: firstChunk,
+    });
+    await store.append(handle, {
+      stream: "stdout",
+      ts: "2026-05-01T00:00:01.000Z",
+      chunk: `${jwtPayload.slice(12)}.${jwtSignature}\n`,
+    });
+    await store.finalize(handle);
+
+    const content = await readRawLog(handle);
+
+    expect(content).toContain("***REDACTED***");
+    expect(content).not.toContain(jwt);
+    expect(content).not.toContain(jwtPayload);
+    expect(content).not.toContain(jwtPayload.slice(0, 12));
+    expect(content).not.toContain(jwtPayload.slice(12));
   });
 
   it("redacts JWTs split across append chunks", async () => {

@@ -100,6 +100,88 @@ describe("run log store", () => {
     expect(result.content).not.toContain(ghp);
   });
 
+  it("redacts Anthropic assistant text before persistence", async () => {
+    await withTempRunLogBase();
+    const store = getRunLogStore();
+    const handle = await store.begin({
+      companyId: "company-1",
+      agentId: "agent-1",
+      runId: "run-1",
+    });
+    const syntheticToken = "ws_synthetic-canary-anthropic-assistant";
+
+    await store.append(handle, {
+      stream: "system",
+      ts: "2026-05-01T00:00:00.000Z",
+      chunk: "",
+      assistant: {
+        text: `BWS_ACCESS_TOKEN=${syntheticToken}`,
+      },
+    });
+    await store.finalize(handle);
+
+    const content = await readRawLog(handle);
+
+    expect(content).toContain("***REDACTED***");
+    expect(content).not.toContain(syntheticToken);
+  });
+
+  it("redacts Anthropic tool result content before persistence", async () => {
+    await withTempRunLogBase();
+    const store = getRunLogStore();
+    const handle = await store.begin({
+      companyId: "company-1",
+      agentId: "agent-1",
+      runId: "run-1",
+    });
+    const syntheticToken = "eyJsynthetic-anthropic-toolresult";
+
+    await store.append(handle, {
+      stream: "system",
+      ts: "2026-05-01T00:00:00.000Z",
+      chunk: "",
+      tool_result: {
+        content: `PAPERCLIP_API_KEY=${syntheticToken}`,
+      },
+    });
+    await store.finalize(handle);
+
+    const content = await readRawLog(handle);
+
+    expect(content).toContain("***REDACTED***");
+    expect(content).not.toContain(syntheticToken);
+  });
+
+  it("redacts Anthropic result PEM content before persistence", async () => {
+    await withTempRunLogBase();
+    const store = getRunLogStore();
+    const handle = await store.begin({
+      companyId: "company-1",
+      agentId: "agent-1",
+      runId: "run-1",
+    });
+    const pemBody = "synthetic-anthropic-result-canary";
+
+    await store.append(handle, {
+      stream: "system",
+      ts: "2026-05-01T00:00:00.000Z",
+      chunk: "",
+      result: {
+        result: [
+          "-----BEGIN RSA PRIVATE KEY-----",
+          pemBody,
+          "-----END RSA PRIVATE KEY-----",
+        ].join("\n"),
+      },
+    });
+    await store.finalize(handle);
+
+    const content = await readRawLog(handle);
+
+    expect(content).toContain("***REDACTED***");
+    expect(content).not.toContain(pemBody);
+  });
+
   it("redacts non-chunk event string fields before persistence", async () => {
     await withTempRunLogBase();
     const store = getRunLogStore();

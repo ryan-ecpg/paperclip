@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyPaperclipWorkspaceEnv,
   appendWithByteCap,
+  buildLoopbackPaperclipApiUrl,
+  buildPaperclipEnv,
   DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
   renderPaperclipWakePrompt,
   runningProcesses,
@@ -246,6 +248,48 @@ describe("runChildProcess", () => {
         } catch {
           // Ignore cleanup races.
         }
+      }
+    }
+  });
+});
+
+describe("buildLoopbackPaperclipApiUrl", () => {
+  it("ignores public API URL hints and uses the local listener port", () => {
+    expect(
+      buildLoopbackPaperclipApiUrl({
+        PAPERCLIP_API_URL: "https://paperclip.example",
+        PAPERCLIP_RUNTIME_API_URL: "https://runtime.example",
+        PAPERCLIP_LISTEN_HOST: "0.0.0.0",
+        PAPERCLIP_LISTEN_PORT: "4123",
+      }),
+    ).toBe("http://127.0.0.1:4123");
+  });
+
+  it("preserves explicit loopback hosts", () => {
+    expect(
+      buildLoopbackPaperclipApiUrl({
+        PAPERCLIP_LISTEN_HOST: "localhost",
+        PAPERCLIP_LISTEN_PORT: "4124",
+      }),
+    ).toBe("http://localhost:4124");
+  });
+});
+
+describe("buildPaperclipEnv", () => {
+  it("keeps the runtime API URL behavior for non-local callers", () => {
+    const previousRuntimeApiUrl = process.env.PAPERCLIP_RUNTIME_API_URL;
+    process.env.PAPERCLIP_RUNTIME_API_URL = "https://runtime.example";
+    try {
+      expect(buildPaperclipEnv({ id: "agent-1", companyId: "company-1" })).toEqual({
+        PAPERCLIP_AGENT_ID: "agent-1",
+        PAPERCLIP_COMPANY_ID: "company-1",
+        PAPERCLIP_API_URL: "https://runtime.example",
+      });
+    } finally {
+      if (previousRuntimeApiUrl === undefined) {
+        delete process.env.PAPERCLIP_RUNTIME_API_URL;
+      } else {
+        process.env.PAPERCLIP_RUNTIME_API_URL = previousRuntimeApiUrl;
       }
     }
   });

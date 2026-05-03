@@ -835,6 +835,14 @@ export function buildPaperclipEnv(agent: { id: string; companyId: string }): Rec
   return vars;
 }
 
+export function buildLoopbackPaperclipApiUrl(runtimeEnv: NodeJS.ProcessEnv = process.env): string {
+  const rawHost = runtimeEnv.PAPERCLIP_LISTEN_HOST ?? runtimeEnv.HOST ?? "";
+  const host = rawHost.trim().toLowerCase();
+  const loopbackHost = host === "localhost" || host === "127.0.0.1" ? host : "127.0.0.1";
+  const runtimePort = runtimeEnv.PAPERCLIP_LISTEN_PORT ?? runtimeEnv.PORT ?? "3100";
+  return `http://${loopbackHost}:${runtimePort}`;
+}
+
 export function applyPaperclipWorkspaceEnv(
   env: Record<string, string>,
   input: {

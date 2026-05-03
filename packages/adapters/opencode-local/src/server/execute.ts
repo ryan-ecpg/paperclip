@@ -26,6 +26,7 @@ import {
   parseObject,
   applyPaperclipWorkspaceEnv,
   buildPaperclipEnv,
+  buildLoopbackPaperclipApiUrl,
   joinPromptSections,
   buildInvocationEnvForLogs,
   ensureAbsoluteDirectory,
@@ -214,6 +215,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
   for (const [key, value] of Object.entries(envConfig)) {
     if (typeof value === "string") env[key] = value;
+  }
+  if (!executionTargetIsRemote) {
+    env.PAPERCLIP_API_URL = buildLoopbackPaperclipApiUrl();
   }
   // Prevent OpenCode from writing an opencode.json config file into the
   // project working directory (which would pollute the git repo).  Model

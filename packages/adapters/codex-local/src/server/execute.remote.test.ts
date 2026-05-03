@@ -85,6 +85,8 @@ describe("codex remote execution", () => {
     process.env.PAPERCLIP_LISTEN_HOST = "0.0.0.0";
     process.env.PAPERCLIP_LISTEN_PORT = "4123";
 
+    const logs: Array<{ stream: "stdout" | "stderr"; chunk: string }> = [];
+
     try {
       await execute({
         runId: "run-local-url",
@@ -117,7 +119,9 @@ describe("codex remote execution", () => {
         executionTarget: {
           kind: "local",
         },
-        onLog: async () => {},
+        onLog: async (stream, chunk) => {
+          logs.push({ stream, chunk });
+        },
       });
     } finally {
       for (const [key, value] of Object.entries(previous)) {
@@ -134,6 +138,10 @@ describe("codex remote execution", () => {
       | [string, string, string[], { env: Record<string, string> }]
       | undefined;
     expect(call?.[3].env.PAPERCLIP_API_URL).toBe("http://127.0.0.1:4123");
+    expect(logs).toContainEqual({
+      stream: "stderr",
+      chunk: expect.stringContaining("ignoring non-loopback PAPERCLIP_API_URL from adapter config env"),
+    });
   });
 
   it("prepares the workspace, syncs CODEX_HOME, and restores workspace changes for remote SSH execution", async () => {

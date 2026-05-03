@@ -26,12 +26,12 @@ import {
   parseObject,
   applyPaperclipWorkspaceEnv,
   buildPaperclipEnv,
-  buildLoopbackPaperclipApiUrl,
   joinPromptSections,
   buildInvocationEnvForLogs,
   ensureAbsoluteDirectory,
   ensurePaperclipSkillSymlink,
   ensurePathInEnv,
+  pinPaperclipApiUrlToLoopback,
   renderTemplate,
   renderPaperclipWakePrompt,
   stringifyPaperclipWakePayload,
@@ -216,9 +216,13 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   for (const [key, value] of Object.entries(envConfig)) {
     if (typeof value === "string") env[key] = value;
   }
-  if (!executionTargetIsRemote) {
-    env.PAPERCLIP_API_URL = buildLoopbackPaperclipApiUrl();
-  }
+  await pinPaperclipApiUrlToLoopback({
+    env,
+    executionTargetIsRemote,
+    configuredApiUrl: envConfig.PAPERCLIP_API_URL,
+    source: "adapter config env",
+    onLog,
+  });
   // Prevent OpenCode from writing an opencode.json config file into the
   // project working directory (which would pollute the git repo).  Model
   // selection is already handled via the --model CLI flag.  Set after the

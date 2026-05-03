@@ -69,6 +69,81 @@ describe("claude remote execution", () => {
     }
   });
 
+  it("pins local execution PAPERCLIP_API_URL to loopback after adapter env overrides", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-claude-local-url-"));
+    cleanupDirs.push(rootDir);
+    const workspaceDir = path.join(rootDir, "workspace");
+    await mkdir(workspaceDir, { recursive: true });
+
+    const previous = {
+      PAPERCLIP_API_URL: process.env.PAPERCLIP_API_URL,
+      PAPERCLIP_RUNTIME_API_URL: process.env.PAPERCLIP_RUNTIME_API_URL,
+      PAPERCLIP_LISTEN_HOST: process.env.PAPERCLIP_LISTEN_HOST,
+      PAPERCLIP_LISTEN_PORT: process.env.PAPERCLIP_LISTEN_PORT,
+    };
+    process.env.PAPERCLIP_API_URL = "https://public.example";
+    process.env.PAPERCLIP_RUNTIME_API_URL = "https://runtime.example";
+    process.env.PAPERCLIP_LISTEN_HOST = "0.0.0.0";
+    process.env.PAPERCLIP_LISTEN_PORT = "4123";
+
+    const logs: Array<{ stream: "stdout" | "stderr"; chunk: string }> = [];
+
+    try {
+      await execute({
+        runId: "run-local-url",
+        agent: {
+          id: "agent-1",
+          companyId: "company-1",
+          name: "Claude Coder",
+          adapterType: "claude_local",
+          adapterConfig: {},
+        },
+        runtime: {
+          sessionId: null,
+          sessionParams: null,
+          sessionDisplayId: null,
+          taskKey: null,
+        },
+        config: {
+          command: "claude",
+          env: {
+            PAPERCLIP_API_URL: "https://adapter-config.example",
+          },
+        },
+        context: {
+          paperclipWorkspace: {
+            cwd: workspaceDir,
+            source: "project_primary",
+          },
+        },
+        executionTarget: {
+          kind: "local",
+        },
+        onLog: async (stream, chunk) => {
+          logs.push({ stream, chunk });
+        },
+      });
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) {
+          delete process.env[key as keyof NodeJS.ProcessEnv];
+        } else {
+          process.env[key as keyof NodeJS.ProcessEnv] = value;
+        }
+      }
+    }
+
+    expect(runChildProcess).toHaveBeenCalledTimes(1);
+    const call = runChildProcess.mock.calls[0] as unknown as
+      | [string, string, string[], { env: Record<string, string> }]
+      | undefined;
+    expect(call?.[3].env.PAPERCLIP_API_URL).toBe("http://127.0.0.1:4123");
+    expect(logs).toContainEqual({
+      stream: "stderr",
+      chunk: expect.stringContaining("ignoring non-loopback PAPERCLIP_API_URL from adapter config env"),
+    });
+  });
+
   it("prepares the workspace, syncs Claude runtime assets, and restores workspace changes for remote SSH execution", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-claude-remote-"));
     cleanupDirs.push(rootDir);

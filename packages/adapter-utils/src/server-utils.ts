@@ -838,9 +838,43 @@ export function buildPaperclipEnv(agent: { id: string; companyId: string }): Rec
 export function buildLoopbackPaperclipApiUrl(runtimeEnv: NodeJS.ProcessEnv = process.env): string {
   const rawHost = runtimeEnv.PAPERCLIP_LISTEN_HOST ?? runtimeEnv.HOST ?? "";
   const host = rawHost.trim().toLowerCase();
-  const loopbackHost = host === "localhost" || host === "127.0.0.1" ? host : "127.0.0.1";
+  const loopbackHost = host === "localhost" || host === "127.0.0.1" || host === "::1" ? host : "127.0.0.1";
   const runtimePort = runtimeEnv.PAPERCLIP_LISTEN_PORT ?? runtimeEnv.PORT ?? "3100";
-  return `http://${loopbackHost}:${runtimePort}`;
+  return `http://${loopbackHost === "::1" ? "[::1]" : loopbackHost}:${runtimePort}`;
+}
+
+export function isLoopbackPaperclipApiUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.trim().toLowerCase();
+    return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+export async function pinPaperclipApiUrlToLoopback(input: {
+  env: Record<string, string>;
+  executionTargetIsRemote: boolean;
+  configuredApiUrl?: unknown;
+  source: string;
+  onLog?: (stream: "stdout" | "stderr", chunk: string) => Promise<void>;
+  runtimeEnv?: NodeJS.ProcessEnv | Record<string, string>;
+}): Promise<void> {
+  if (input.executionTargetIsRemote) return;
+
+  const loopbackApiUrl = buildLoopbackPaperclipApiUrl(input.runtimeEnv);
+  const configuredApiUrl =
+    typeof input.configuredApiUrl === "string" && input.configuredApiUrl.trim().length > 0
+      ? input.configuredApiUrl.trim()
+      : null;
+  if (configuredApiUrl && !isLoopbackPaperclipApiUrl(configuredApiUrl)) {
+    await input.onLog?.(
+      "stderr",
+      `[paperclip] Warning: ignoring non-loopback PAPERCLIP_API_URL from ${input.source}; local adapter API calls use ${loopbackApiUrl}.\n`,
+    );
+  }
+  input.env.PAPERCLIP_API_URL = loopbackApiUrl;
 }
 
 export function applyPaperclipWorkspaceEnv(

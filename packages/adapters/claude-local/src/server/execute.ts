@@ -26,12 +26,12 @@ import {
   parseJson,
   applyPaperclipWorkspaceEnv,
   buildPaperclipEnv,
-  buildLoopbackPaperclipApiUrl,
   readPaperclipRuntimeSkillEntries,
   joinPromptSections,
   buildInvocationEnvForLogs,
   ensureAbsoluteDirectory,
   ensurePathInEnv,
+  pinPaperclipApiUrlToLoopback,
   renderTemplate,
   renderPaperclipWakePrompt,
   stringifyPaperclipWakePayload,
@@ -59,6 +59,7 @@ interface ClaudeExecutionInput {
   context: Record<string, unknown>;
   executionTarget?: ReturnType<typeof readAdapterExecutionTarget>;
   authToken?: string;
+  onLog?: (stream: "stdout" | "stderr", chunk: string) => Promise<void>;
 }
 
 interface ClaudeRuntimeConfig {
@@ -108,7 +109,7 @@ function resolveClaudeBillingType(env: Record<string, string>): "api" | "subscri
 }
 
 async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<ClaudeRuntimeConfig> {
-  const { runId, agent, config, context, executionTarget, authToken } = input;
+  const { runId, agent, config, context, executionTarget, authToken, onLog } = input;
 
   const command = asString(config.command, "claude");
   const workspaceContext = parseObject(context.paperclipWorkspace);
@@ -143,6 +144,7 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
   const cwd = effectiveWorkspaceCwd || configuredCwd || process.cwd();
   await ensureAbsoluteDirectory(cwd, { createIfMissing: true });
 
+  const executionTargetIsRemote = adapterExecutionTargetIsRemote(executionTarget);
   const envConfig = parseObject(config.env);
   const hasExplicitApiKey =
     typeof envConfig.PAPERCLIP_API_KEY === "string" && envConfig.PAPERCLIP_API_KEY.trim().length > 0;
@@ -226,9 +228,13 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
   for (const [key, value] of Object.entries(envConfig)) {
     if (typeof value === "string") env[key] = value;
   }
-  if (!executionTargetIsRemote) {
-    env.PAPERCLIP_API_URL = buildLoopbackPaperclipApiUrl();
-  }
+  await pinPaperclipApiUrlToLoopback({
+    env,
+    executionTargetIsRemote,
+    configuredApiUrl: envConfig.PAPERCLIP_API_URL,
+    source: "adapter config env",
+    onLog,
+  });
 
   if (!hasExplicitApiKey && authToken) {
     env.PAPERCLIP_API_KEY = authToken;
@@ -281,6 +287,7 @@ export async function runClaudeLogin(input: {
     config: input.config,
     context: input.context ?? {},
     authToken: input.authToken,
+    onLog,
   });
 
   const proc = await runAdapterExecutionTargetProcess(input.runId, null, runtime.command, ["login"], {
@@ -329,6 +336,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     context,
     executionTarget,
     authToken,
+    onLog,
   });
   const {
     command,

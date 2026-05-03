@@ -26,11 +26,11 @@ import {
   parseObject,
   applyPaperclipWorkspaceEnv,
   buildPaperclipEnv,
-  buildLoopbackPaperclipApiUrl,
   buildInvocationEnvForLogs,
   ensureAbsoluteDirectory,
   ensurePaperclipSkillSymlink,
   ensurePathInEnv,
+  pinPaperclipApiUrlToLoopback,
   readPaperclipRuntimeSkillEntries,
   resolvePaperclipDesiredSkillNames,
   removeMaintainerOnlySkillSymlinks,
@@ -297,9 +297,13 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   for (const [k, v] of Object.entries(envConfig)) {
     if (typeof v === "string") env[k] = v;
   }
-  if (!executionTargetIsRemote) {
-    env.PAPERCLIP_API_URL = buildLoopbackPaperclipApiUrl();
-  }
+  await pinPaperclipApiUrlToLoopback({
+    env,
+    executionTargetIsRemote,
+    configuredApiUrl: envConfig.PAPERCLIP_API_URL,
+    source: "adapter config env",
+    onLog,
+  });
   if (!hasExplicitApiKey && authToken) {
     env.PAPERCLIP_API_KEY = authToken;
   }

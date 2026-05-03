@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyPaperclipWorkspaceEnv,
   appendWithByteCap,
   buildLoopbackPaperclipApiUrl,
   buildPaperclipEnv,
   DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
+  isLoopbackPaperclipApiUrl,
+  pinPaperclipApiUrlToLoopback,
   renderPaperclipWakePrompt,
   runningProcesses,
   runChildProcess,
@@ -272,6 +274,66 @@ describe("buildLoopbackPaperclipApiUrl", () => {
         PAPERCLIP_LISTEN_PORT: "4124",
       }),
     ).toBe("http://localhost:4124");
+  });
+
+  it("preserves explicit IPv6 loopback hosts", () => {
+    expect(
+      buildLoopbackPaperclipApiUrl({
+        PAPERCLIP_LISTEN_HOST: "::1",
+        PAPERCLIP_LISTEN_PORT: "4125",
+      }),
+    ).toBe("http://[::1]:4125");
+  });
+});
+
+describe("isLoopbackPaperclipApiUrl", () => {
+  it("recognizes supported loopback URL hosts", () => {
+    expect(isLoopbackPaperclipApiUrl("http://localhost:3100")).toBe(true);
+    expect(isLoopbackPaperclipApiUrl("http://127.0.0.1:3100")).toBe(true);
+    expect(isLoopbackPaperclipApiUrl("http://[::1]:3100")).toBe(true);
+    expect(isLoopbackPaperclipApiUrl("https://paperclip.example")).toBe(false);
+  });
+});
+
+describe("pinPaperclipApiUrlToLoopback", () => {
+  it("warns and overrides non-loopback local adapter env config", async () => {
+    const onLog = vi.fn(async () => undefined);
+    const env = {
+      PAPERCLIP_API_URL: "https://adapter-config.example",
+    };
+
+    await pinPaperclipApiUrlToLoopback({
+      env,
+      executionTargetIsRemote: false,
+      configuredApiUrl: "https://adapter-config.example",
+      source: "adapter config env",
+      onLog,
+      runtimeEnv: {
+        PAPERCLIP_LISTEN_HOST: "0.0.0.0",
+        PAPERCLIP_LISTEN_PORT: "4126",
+      },
+    });
+
+    expect(env.PAPERCLIP_API_URL).toBe("http://127.0.0.1:4126");
+    expect(onLog).toHaveBeenCalledWith(
+      "stderr",
+      expect.stringContaining("ignoring non-loopback PAPERCLIP_API_URL from adapter config env"),
+    );
+  });
+
+  it("does not alter remote execution targets", async () => {
+    const env = {
+      PAPERCLIP_API_URL: "http://198.51.100.10:3102",
+    };
+
+    await pinPaperclipApiUrlToLoopback({
+      env,
+      executionTargetIsRemote: true,
+      configuredApiUrl: "https://adapter-config.example",
+      source: "adapter config env",
+    });
+
+    expect(env.PAPERCLIP_API_URL).toBe("http://198.51.100.10:3102");
   });
 });
 

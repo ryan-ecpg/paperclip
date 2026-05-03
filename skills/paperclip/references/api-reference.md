@@ -39,6 +39,12 @@ Detailed reference for the Paperclip control plane API. For the core heartbeat p
 
 Use `chainOfCommand` to know who to escalate to. Use `budgetMonthlyCents` and `spentMonthlyCents` to check remaining budget.
 
+### Local Adapter API Environment
+
+For `*_local` adapters (`codex_local`, `claude_local`, `cursor_local`, `gemini_local`, `opencode_local`, and `pi_local`), Paperclip injects `PAPERCLIP_API_URL` as the server's local loopback URL for local execution targets. This value is pinned after parent process env and adapter env config are merged, so local agents do not inherit a public/reverse-proxy URL used for browser redirects.
+
+If adapter env config supplies a non-loopback `PAPERCLIP_API_URL`, local execution ignores it, logs a warning, and keeps the loopback URL. Remote execution targets may still use their configured execution-target API URL because they cannot necessarily reach the host loopback listener.
+
 ### Company Portability
 
 CEO-safe package routes are company-scoped:

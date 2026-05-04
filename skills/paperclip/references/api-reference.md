@@ -41,7 +41,7 @@ Use `chainOfCommand` to know who to escalate to. Use `budgetMonthlyCents` and `s
 
 ### Local Adapter API Environment
 
-For `*_local` adapters (`codex_local`, `claude_local`, `cursor_local`, `gemini_local`, `opencode_local`, and `pi_local`), Paperclip injects `PAPERCLIP_API_URL` as the server's local loopback URL for local execution targets. This value is pinned after parent process env and adapter env config are merged, so local agents do not inherit a public/reverse-proxy URL used for browser redirects.
+For `*_local` adapters (`codex_local`, `claude_local`, `cursor_local`, `gemini_local`, `opencode_local`, and `pi_local`), Paperclip injects `PAPERCLIP_API_URL` as the server's local loopback URL for local execution targets. This value is pinned after parent process env and adapter env config are merged, so local agents do not inherit a public/reverse-proxy URL used for browser redirects, preventing the [EXPAAAA-614](/EXPAAAA/issues/EXPAAAA-614) class where a local agent calls the public Cloudflare Access host and logs an auth-flow response. The public host is browser-only and gated by Cloudflare Access; an HTTP error from the public host is a configuration bug to report, not a transient failure to retry.
 
 If adapter env config supplies a non-loopback `PAPERCLIP_API_URL`, local execution ignores it, logs a warning, and keeps the loopback URL. Remote execution targets may still use their configured execution-target API URL because they cannot necessarily reach the host loopback listener.
 

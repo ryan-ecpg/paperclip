@@ -144,6 +144,84 @@ describe("codex remote execution", () => {
     });
   });
 
+  it("pins inherited local execution PAPERCLIP_API_URL to loopback without adapter env override", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-codex-inherited-url-"));
+    cleanupDirs.push(rootDir);
+    const workspaceDir = path.join(rootDir, "workspace");
+    const codexHomeDir = path.join(rootDir, "codex-home");
+    await mkdir(workspaceDir, { recursive: true });
+    await mkdir(codexHomeDir, { recursive: true });
+    await writeFile(path.join(codexHomeDir, "auth.json"), "{}", "utf8");
+
+    const previous = {
+      PAPERCLIP_API_URL: process.env.PAPERCLIP_API_URL,
+      PAPERCLIP_RUNTIME_API_URL: process.env.PAPERCLIP_RUNTIME_API_URL,
+      PAPERCLIP_LISTEN_HOST: process.env.PAPERCLIP_LISTEN_HOST,
+      PAPERCLIP_LISTEN_PORT: process.env.PAPERCLIP_LISTEN_PORT,
+    };
+    process.env.PAPERCLIP_API_URL = "https://public.example";
+    process.env.PAPERCLIP_RUNTIME_API_URL = "https://runtime.example";
+    process.env.PAPERCLIP_LISTEN_HOST = "0.0.0.0";
+    process.env.PAPERCLIP_LISTEN_PORT = "4124";
+
+    const logs: Array<{ stream: "stdout" | "stderr"; chunk: string }> = [];
+
+    try {
+      await execute({
+        runId: "run-inherited-local-url",
+        agent: {
+          id: "agent-1",
+          companyId: "company-1",
+          name: "CodexCoder",
+          adapterType: "codex_local",
+          adapterConfig: {},
+        },
+        runtime: {
+          sessionId: null,
+          sessionParams: null,
+          sessionDisplayId: null,
+          taskKey: null,
+        },
+        config: {
+          command: "codex",
+          env: {
+            CODEX_HOME: codexHomeDir,
+          },
+        },
+        context: {
+          paperclipWorkspace: {
+            cwd: workspaceDir,
+            source: "project_primary",
+          },
+        },
+        executionTarget: {
+          kind: "local",
+        },
+        onLog: async (stream, chunk) => {
+          logs.push({ stream, chunk });
+        },
+      });
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) {
+          delete process.env[key as keyof NodeJS.ProcessEnv];
+        } else {
+          process.env[key as keyof NodeJS.ProcessEnv] = value;
+        }
+      }
+    }
+
+    expect(runChildProcess).toHaveBeenCalledTimes(1);
+    const call = runChildProcess.mock.calls[0] as unknown as
+      | [string, string, string[], { env: Record<string, string> }]
+      | undefined;
+    expect(call?.[3].env.PAPERCLIP_API_URL).toBe("http://127.0.0.1:4124");
+    expect(logs).not.toContainEqual({
+      stream: "stderr",
+      chunk: expect.stringContaining("ignoring non-loopback PAPERCLIP_API_URL from adapter config env"),
+    });
+  });
+
   it("prepares the workspace, syncs CODEX_HOME, and restores workspace changes for remote SSH execution", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-codex-remote-"));
     cleanupDirs.push(rootDir);

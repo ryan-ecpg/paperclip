@@ -56,10 +56,32 @@ describe("redaction", () => {
     expect(result.normal).toBe("plain");
   });
 
+  it("redacts known token shapes from event payload text fields", () => {
+    const barePaperclipToken = `pcp_${"a".repeat(20)}`;
+    const futurePaperclipToken = `pCp_futurekind_${"b".repeat(20)}`;
+    const standardBwsToken = `bWs_${"c".repeat(20)}`;
+    const bwsMachineToken = `0.11111111-2222-3333-4444-555555555555.${"A".repeat(24)}`;
+    const bwsMachineTokenWithSuffix = `${bwsMachineToken}:${"B".repeat(24)}`;
+
+    const result = redactEventPayload({
+      output: `open /invite/${barePaperclipToken}`,
+      message: `future ${futurePaperclipToken} standard ${standardBwsToken}`,
+      result: `machine ${bwsMachineToken} suffixed ${bwsMachineTokenWithSuffix}`,
+      safe: "pcp_short bws_short",
+    });
+
+    expect(result).toEqual({
+      output: `open /invite/${REDACTED_EVENT_VALUE}`,
+      message: `future ${REDACTED_EVENT_VALUE} standard ${REDACTED_EVENT_VALUE}`,
+      result: `machine ${REDACTED_EVENT_VALUE} suffixed ${REDACTED_EVENT_VALUE}`,
+      safe: "pcp_short bws_short",
+    });
+  });
+
   it("redacts known token shapes under neutral keys", () => {
     const input = {
-      command: "open /invite/pcp_invite_SYNTHETIC123456",
-      profile: "bWs_profile_SYNTHETIC123456",
+      command: `open /invite/pcp_invite_${"a".repeat(20)}`,
+      profile: `bWs_${"b".repeat(20)}`,
       access: `0.11111111-2222-3333-4444-555555555555.${"A".repeat(24)}:${"B".repeat(24)}`,
       safe: "plain",
     };
@@ -108,8 +130,8 @@ describe("redaction", () => {
       `GITHUB_TOKEN=${githubToken}`,
       `Supabase access token ${supabaseToken}`,
       `Supabase secret key ${supabaseSecretKey}`,
-      "Paperclip token pCp_claim_SYNTHETIC123456",
-      "BWS token bWs_profile_SYNTHETIC123456",
+      `Paperclip token pCp_claim_${"a".repeat(20)}`,
+      `BWS token bWs_${"b".repeat(20)}`,
       `BWS access 0.11111111-2222-3333-4444-555555555555.${"A".repeat(24)}:${"B".repeat(24)}`,
       `Anthropic key ${anthropicKey}`,
       ...privateKeys,
@@ -129,8 +151,8 @@ describe("redaction", () => {
     expect(result).not.toContain(githubToken);
     expect(result).not.toContain(supabaseToken);
     expect(result).not.toContain(supabaseSecretKey);
-    expect(result).not.toContain("pCp_claim_SYNTHETIC123456");
-    expect(result).not.toContain("bWs_profile_SYNTHETIC123456");
+    expect(result).not.toContain(`pCp_claim_${"a".repeat(20)}`);
+    expect(result).not.toContain(`bWs_${"b".repeat(20)}`);
     expect(result).not.toContain("11111111-2222-3333-4444-555555555555");
     expect(result).not.toContain(anthropicKey);
     expect(result).not.toContain("rsa-private-key-material");

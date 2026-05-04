@@ -76,8 +76,6 @@ export const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 export const MAX_EXCERPT_BYTES = 32 * 1024;
 const TERMINAL_RESULT_SCAN_OVERLAP_CHARS = 64 * 1024;
 const SENSITIVE_ENV_KEY = /(key|token|secret|password|passwd|authorization|cookie)/i;
-const SECRET_LIKE_ENV_VALUE =
-  /\b(?:[pP][cC][pP]_(?=[A-Za-z0-9_-]*[a-z0-9])[A-Za-z0-9_-]{8,}|[bB][wW][sS]_(?=[A-Za-z0-9_-]*[a-z0-9])[A-Za-z0-9_-]{8,}|0\.[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\.[A-Za-z0-9+/_=-]{16,}:[A-Za-z0-9+/_=-]{16,})\b/;
 const PAPERCLIP_SKILL_ROOT_RELATIVE_CANDIDATES = [
   "../../skills",
   "../../../../../skills",
@@ -782,7 +780,7 @@ export function renderPaperclipWakePrompt(
 export function redactEnvForLogs(env: Record<string, string>): Record<string, string> {
   const redacted: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
-    redacted[key] = SENSITIVE_ENV_KEY.test(key) || SECRET_LIKE_ENV_VALUE.test(value) ? "***REDACTED***" : value;
+    redacted[key] = SENSITIVE_ENV_KEY.test(key) ? "***REDACTED***" : value;
   }
   return redacted;
 }

@@ -56,6 +56,22 @@ describe("redaction", () => {
     expect(result.normal).toBe("plain");
   });
 
+  it("redacts known token shapes under neutral keys", () => {
+    const input = {
+      command: "open /invite/pcp_invite_SYNTHETIC123456",
+      profile: "bWs_profile_SYNTHETIC123456",
+      access: `0.11111111-2222-3333-4444-555555555555.${"A".repeat(24)}:${"B".repeat(24)}`,
+      safe: "plain",
+    };
+
+    const result = sanitizeRecord(input);
+
+    expect(result.command).toBe(`open /invite/${REDACTED_EVENT_VALUE}`);
+    expect(result.profile).toBe(REDACTED_EVENT_VALUE);
+    expect(result.access).toBe(REDACTED_EVENT_VALUE);
+    expect(result.safe).toBe("plain");
+  });
+
   it("redacts payload objects while preserving null", () => {
     expect(redactEventPayload(null)).toBeNull();
     expect(redactEventPayload({ password: "hunter2", safe: "value" })).toEqual({
@@ -92,6 +108,9 @@ describe("redaction", () => {
       `GITHUB_TOKEN=${githubToken}`,
       `Supabase access token ${supabaseToken}`,
       `Supabase secret key ${supabaseSecretKey}`,
+      "Paperclip token pCp_claim_SYNTHETIC123456",
+      "BWS token bWs_profile_SYNTHETIC123456",
+      `BWS access 0.11111111-2222-3333-4444-555555555555.${"A".repeat(24)}:${"B".repeat(24)}`,
       `Anthropic key ${anthropicKey}`,
       ...privateKeys,
       `session=${jwt}`,
@@ -110,6 +129,9 @@ describe("redaction", () => {
     expect(result).not.toContain(githubToken);
     expect(result).not.toContain(supabaseToken);
     expect(result).not.toContain(supabaseSecretKey);
+    expect(result).not.toContain("pCp_claim_SYNTHETIC123456");
+    expect(result).not.toContain("bWs_profile_SYNTHETIC123456");
+    expect(result).not.toContain("11111111-2222-3333-4444-555555555555");
     expect(result).not.toContain(anthropicKey);
     expect(result).not.toContain("rsa-private-key-material");
     expect(result).not.toContain("private-key-material");

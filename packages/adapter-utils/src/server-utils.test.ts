@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   applyPaperclipWorkspaceEnv,
   appendWithByteCap,
+  buildInvocationEnvForLogs,
   DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
+  redactEnvForLogs,
   renderPaperclipWakePrompt,
   runningProcesses,
   runChildProcess,
@@ -467,6 +469,42 @@ describe("applyPaperclipWorkspaceEnv", () => {
     );
 
     expect(env).toEqual({});
+  });
+});
+
+describe("redactEnvForLogs", () => {
+  it("redacts secret-shaped values even when env names are neutral", () => {
+    const bwsAccess = `0.11111111-2222-3333-4444-555555555555.${"A".repeat(24)}:${"B".repeat(24)}`;
+
+    expect(
+      redactEnvForLogs({
+        SAFE_VALUE: "plain",
+        NEUTRAL_PAPERCLIP: "pcp_claim_SYNTHETIC123456",
+        neutral_bws: "bWs_profile_SYNTHETIC123456",
+        PROFILE: bwsAccess,
+        lower_case_token: "synthetic-token",
+      }),
+    ).toEqual({
+      SAFE_VALUE: "plain",
+      NEUTRAL_PAPERCLIP: "***REDACTED***",
+      neutral_bws: "***REDACTED***",
+      PROFILE: "***REDACTED***",
+      lower_case_token: "***REDACTED***",
+    });
+  });
+
+  it("redacts included runtime env values with neutral keys", () => {
+    const logged = buildInvocationEnvForLogs(
+      {},
+      {
+        runtimeEnv: {
+          NEUTRAL_RUNTIME_VALUE: "pCp_cli_auth_SYNTHETIC123456",
+        },
+        includeRuntimeKeys: ["NEUTRAL_RUNTIME_VALUE"],
+      },
+    );
+
+    expect(logged.NEUTRAL_RUNTIME_VALUE).toBe("***REDACTED***");
   });
 });
 

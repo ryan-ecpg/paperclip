@@ -7,6 +7,10 @@ const OPENAI_KEY_TEXT_RE = /\bsk-[A-Za-z0-9_-]{12,}\b/g;
 const GITHUB_TOKEN_TEXT_RE = /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/g;
 const SUPABASE_ACCESS_TOKEN_TEXT_RE = /\bsbp_[A-Za-z0-9_-]{20,}\b/g;
 const SUPABASE_SECRET_KEY_TEXT_RE = /\bsb_secret_[A-Za-z0-9_-]{20,}\b/g;
+const PAPERCLIP_TOKEN_TEXT_RE = /\b[pP][cC][pP]_(?=[A-Za-z0-9_-]*[a-z0-9])[A-Za-z0-9_-]{8,}\b/g;
+const BWS_TOKEN_TEXT_RE = /\b[bB][wW][sS]_(?=[A-Za-z0-9_-]*[a-z0-9])[A-Za-z0-9_-]{8,}\b/g;
+const BWS_ACCESS_TOKEN_TEXT_RE =
+  /\b0\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[A-Za-z0-9+/_=-]{16,}:[A-Za-z0-9+/_=-]{16,}\b/gi;
 const AUTHORIZATION_BEARER_TEXT_RE = /(\bAuthorization\s*:\s*Bearer\s+)[^\s"'`]+/gi;
 const ENV_SECRET_ASSIGNMENT_TEXT_RE =
   /(\b[A-Za-z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|AUTHORIZATION|JWT)[A-Za-z0-9_]*\s*=\s*)[^\s"'`]+/gi;
@@ -56,9 +60,16 @@ export function sanitizeRecord(record: Record<string, unknown>): Record<string, 
       redacted[key] = REDACTED_EVENT_VALUE;
       continue;
     }
-    if (typeof value === "string" && JWT_VALUE_RE.test(value)) {
-      redacted[key] = REDACTED_EVENT_VALUE;
-      continue;
+    if (typeof value === "string") {
+      const sanitized = redactSensitiveText(value);
+      if (sanitized !== value) {
+        redacted[key] = sanitized === REDACTED_EVENT_VALUE ? REDACTED_EVENT_VALUE : sanitized;
+        continue;
+      }
+      if (JWT_VALUE_RE.test(value)) {
+        redacted[key] = REDACTED_EVENT_VALUE;
+        continue;
+      }
     }
     redacted[key] = sanitizeValue(value);
   }
@@ -82,5 +93,8 @@ export function redactSensitiveText(input: string): string {
     .replace(GITHUB_TOKEN_TEXT_RE, REDACTED_EVENT_VALUE)
     .replace(SUPABASE_ACCESS_TOKEN_TEXT_RE, REDACTED_EVENT_VALUE)
     .replace(SUPABASE_SECRET_KEY_TEXT_RE, REDACTED_EVENT_VALUE)
+    .replace(PAPERCLIP_TOKEN_TEXT_RE, REDACTED_EVENT_VALUE)
+    .replace(BWS_TOKEN_TEXT_RE, REDACTED_EVENT_VALUE)
+    .replace(BWS_ACCESS_TOKEN_TEXT_RE, REDACTED_EVENT_VALUE)
     .replace(JWT_TEXT_RE, REDACTED_EVENT_VALUE);
 }

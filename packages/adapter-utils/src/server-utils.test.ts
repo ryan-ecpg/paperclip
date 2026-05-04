@@ -355,6 +355,35 @@ describe("buildPaperclipEnv", () => {
       }
     }
   });
+
+  it("ignores inherited public API URL values when forceLocalListen is set", () => {
+    const previous = {
+      PAPERCLIP_API_URL: process.env.PAPERCLIP_API_URL,
+      PAPERCLIP_RUNTIME_API_URL: process.env.PAPERCLIP_RUNTIME_API_URL,
+      PAPERCLIP_LISTEN_HOST: process.env.PAPERCLIP_LISTEN_HOST,
+      PAPERCLIP_LISTEN_PORT: process.env.PAPERCLIP_LISTEN_PORT,
+    };
+    process.env.PAPERCLIP_API_URL = "https://paperclip.example";
+    process.env.PAPERCLIP_RUNTIME_API_URL = "https://runtime.example";
+    process.env.PAPERCLIP_LISTEN_HOST = "0.0.0.0";
+    process.env.PAPERCLIP_LISTEN_PORT = "4127";
+
+    try {
+      expect(buildPaperclipEnv({ id: "agent-1", companyId: "company-1" }, { forceLocalListen: true })).toEqual({
+        PAPERCLIP_AGENT_ID: "agent-1",
+        PAPERCLIP_COMPANY_ID: "company-1",
+        PAPERCLIP_API_URL: "http://127.0.0.1:4127",
+      });
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) {
+          delete process.env[key as keyof typeof previous];
+        } else {
+          process.env[key as keyof typeof previous] = value;
+        }
+      }
+    }
+  });
 });
 
 describe("renderPaperclipWakePrompt", () => {

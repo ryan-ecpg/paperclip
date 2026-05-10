@@ -62,6 +62,14 @@
       "embedded-postgres@18.1.0-beta.16": "patches/embedded-postgres@18.1.0-beta.16.patch"
     },
     "overrides": {
+      "defu": ">=6.1.5",
+      "drizzle-orm": ">=0.45.2",
+      "fast-uri": ">=3.1.2",
+      "fast-xml-parser": ">=5.7.0",
+      "kysely": ">=0.28.14",
+      "lodash-es": ">=4.17.24",
+      "path-to-regexp": ">=8.4.1",
+      "picomatch": ">=4.0.4",
       "rollup": ">=4.59.0"
     }
   }

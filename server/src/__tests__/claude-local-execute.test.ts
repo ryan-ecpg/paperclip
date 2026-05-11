@@ -158,6 +158,12 @@ async function setupExecuteEnv(
   };
 }
 
+async function writeClaudeSessionJsonl(root: string, cwd: string, sessionId: string): Promise<void> {
+  const projectDir = path.join(root, ".claude", "projects", path.resolve(cwd).replace(/[^A-Za-z0-9]/g, "-"));
+  await fs.mkdir(projectDir, { recursive: true });
+  await fs.writeFile(path.join(projectDir, `${sessionId}.jsonl`), `${JSON.stringify({ text: "safe session text" })}\n`, "utf-8");
+}
+
 function createLocalSandboxRunner() {
   let counter = 0;
   return {
@@ -230,11 +236,45 @@ describe("claude execute", () => {
     }
   });
 
+  it("does not scrub a fresh Claude session id learned only from CLI output", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-claude-exec-fresh-unscrubbed-"));
+    const { workspace, commandPath, restore } = await setupExecuteEnv(root);
+    const syntheticJwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmcmVzaCJ9.freshSessionSyntheticSignature";
+    const projectDir = path.join(root, ".claude", "projects", path.resolve(workspace).replace(/[^A-Za-z0-9]/g, "-"));
+    const sessionFile = path.join(projectDir, "claude-session-1.jsonl");
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.writeFile(sessionFile, `${JSON.stringify({ text: syntheticJwt })}\n`, "utf-8");
+    try {
+      const result = await execute({
+        runId: "run-fresh-no-stdout-targeting",
+        agent: { id: "agent-1", companyId: "co-1", name: "Test", adapterType: "claude_local", adapterConfig: {} },
+        runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
+        config: {
+          command: commandPath,
+          cwd: workspace,
+          promptTemplate: "Do work.",
+        },
+        context: {},
+        authToken: "tok",
+        onLog: async () => {},
+      });
+
+      const out = await fs.readFile(sessionFile, "utf-8");
+      expect(result.exitCode).toBe(0);
+      expect(out.includes(syntheticJwt)).toBe(true);
+      expect(out.includes("***REDACTED***")).toBe(false);
+    } finally {
+      restore();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("omits --append-system-prompt-file on a resumed session even when instructionsFile is set", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-claude-exec-resume-"));
     const { workspace, commandPath, capturePath, restore } = await setupExecuteEnv(root);
     const instructionsFile = path.join(root, "instructions.md");
     await fs.writeFile(instructionsFile, "# Agent instructions", "utf-8");
+    await writeClaudeSessionJsonl(root, workspace, "claude-session-1");
     try {
       await execute({
         runId: "run-resume",
@@ -302,6 +342,7 @@ describe("claude execute", () => {
     const { workspace, commandPath, restore } = await setupExecuteEnv(root);
     const instructionsFile = path.join(root, "instructions.md");
     await fs.writeFile(instructionsFile, "# Agent instructions", "utf-8");
+    await writeClaudeSessionJsonl(root, workspace, "claude-session-1");
     let capturedNotes: string[] = ["sentinel"];
     try {
       await execute({
@@ -706,6 +747,8 @@ describe("claude execute", () => {
         cwd: workspace,
       });
       expect(typeof first.sessionParams?.promptBundleKey).toBe("string");
+
+      await writeClaudeSessionJsonl(root, workspace, "claude-session-1");
 
       const second = await execute({
         runId: "run-2",

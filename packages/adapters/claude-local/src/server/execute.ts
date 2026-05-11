@@ -55,6 +55,7 @@ import { prepareClaudeConfigSeed } from "./claude-config.js";
 import { resolveClaudeDesiredSkillNames } from "./skills.js";
 import { isBedrockModelId } from "./models.js";
 import { prepareClaudePromptBundle } from "./prompt-cache.js";
+import { scrubClaudeSessionFiles } from "./scrubSessionFiles.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -866,6 +867,17 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
   try {
     const initial = await runAttempt(sessionId ?? null);
+    const initialSessionId =
+      initial.parsedStream.sessionId ??
+      ((initial.parsed ? asString(initial.parsed.session_id, "") : "") || sessionId);
+    if (!executionTargetIsRemote) {
+      await scrubClaudeSessionFiles({
+        sessionId: initialSessionId,
+        cwd: effectiveExecutionCwd,
+        env: effectiveEnv,
+        onLog,
+      });
+    }
     if (
       sessionId &&
       !initial.proc.timedOut &&
@@ -878,6 +890,17 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         `[paperclip] Claude resume session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
       );
       const retry = await runAttempt(null);
+      const retrySessionId =
+        retry.parsedStream.sessionId ??
+        ((retry.parsed ? asString(retry.parsed.session_id, "") : "") || null);
+      if (!executionTargetIsRemote) {
+        await scrubClaudeSessionFiles({
+          sessionId: retrySessionId,
+          cwd: effectiveExecutionCwd,
+          env: effectiveEnv,
+          onLog,
+        });
+      }
       return toAdapterResult(retry, { fallbackSessionId: null, clearSessionOnMissingSession: true });
     }
 

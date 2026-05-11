@@ -46,6 +46,7 @@ import {
 import { pathExists, prepareManagedCodexHome, resolveManagedCodexHomeDir, resolveSharedCodexHomeDir } from "./codex-home.js";
 import { resolveCodexDesiredSkillNames } from "./skills.js";
 import { buildCodexExecArgs } from "./codex-args.js";
+import { scrubCodexRolloutFiles } from "./scrubRolloutFiles.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -669,6 +670,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   };
 
   const runAttempt = async (resumeSessionId: string | null) => {
+    const startedAt = new Date();
     const execArgs = buildCodexExecArgs(
       forceSaferInvocation ? { ...config, fastMode: false } : config,
       { resumeSessionId },
@@ -712,6 +714,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         await onLog(stream, cleaned);
       },
     });
+    const endedAt = new Date();
     const cleanedStderr = stripCodexRolloutNoise(proc.stderr);
     return {
       proc: {
@@ -720,6 +723,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       },
       rawStderr: proc.stderr,
       parsed: parseCodexJsonl(proc.stdout),
+      startedAt,
+      endedAt,
     };
   };
 
@@ -815,6 +820,14 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
   try {
     const initial = await runAttempt(sessionId);
+    if (!executionTargetIsRemote) {
+      await scrubCodexRolloutFiles({
+        codexHome: effectiveCodexHome,
+        startedAt: initial.startedAt,
+        endedAt: initial.endedAt,
+        onLog,
+      });
+    }
     if (
       sessionId &&
       !initial.proc.timedOut &&
@@ -826,6 +839,14 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         `[paperclip] Codex resume session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
       );
       const retry = await runAttempt(null);
+      if (!executionTargetIsRemote) {
+        await scrubCodexRolloutFiles({
+          codexHome: effectiveCodexHome,
+          startedAt: retry.startedAt,
+          endedAt: retry.endedAt,
+          onLog,
+        });
+      }
       return toResult(retry, true, true);
     }
 

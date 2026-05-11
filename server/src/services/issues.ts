@@ -60,6 +60,17 @@ const ISSUE_LIST_RELATED_QUERY_CHUNK_SIZE = 500;
 export const MAX_CHILD_ISSUES_CREATED_BY_HELPER = 25;
 const MAX_CHILD_COMPLETION_SUMMARIES = 20;
 const CHILD_COMPLETION_SUMMARY_BODY_MAX_CHARS = 500;
+
+const ISSUE_COMMENT_RUN_ID_FK = "issue_comments_created_by_run_id_heartbeat_runs_id_fk";
+
+function isIssueCommentRunIdForeignKeyError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as { code?: unknown; constraint?: unknown; constraint_name?: unknown; cause?: unknown };
+  const constraint = maybeError.constraint ?? maybeError.constraint_name;
+  if (maybeError.code === "23503" && constraint === ISSUE_COMMENT_RUN_ID_FK) return true;
+  return isIssueCommentRunIdForeignKeyError(maybeError.cause);
+}
+
 function assertTransition(from: string, to: string) {
   if (from === to) return;
   if (!ALL_ISSUE_STATUSES.includes(to)) {
@@ -3519,17 +3530,25 @@ export function issueService(db: Db) {
         enabled: (await instanceSettings.getGeneral()).censorUsernameInLogs,
       };
       const redactedBody = redactCurrentUserText(body, currentUserRedactionOptions);
+      const commentValues = {
+        companyId: issue.companyId,
+        issueId,
+        authorAgentId: actor.agentId ?? null,
+        authorUserId: actor.userId ?? null,
+        createdByRunId: actor.runId ?? null,
+        body: redactedBody,
+      };
       const [comment] = await db
         .insert(issueComments)
-        .values({
-          companyId: issue.companyId,
-          issueId,
-          authorAgentId: actor.agentId ?? null,
-          authorUserId: actor.userId ?? null,
-          createdByRunId: actor.runId ?? null,
-          body: redactedBody,
-        })
-        .returning();
+        .values(commentValues)
+        .returning()
+        .catch(async (error) => {
+          if (!commentValues.createdByRunId || !isIssueCommentRunIdForeignKeyError(error)) throw error;
+          return db
+            .insert(issueComments)
+            .values({ ...commentValues, createdByRunId: null })
+            .returning();
+        });
 
       // Update issue's updatedAt so comment activity is reflected in recency sorting
       await db

@@ -96,7 +96,10 @@ export async function logActivity(db: Db, input: LogActivityInput) {
     await db.insert(activityLog).values(values);
   } catch (error) {
     if (!persistedRunId || !isActivityRunIdForeignKeyError(error)) throw error;
-    logger.warn({ runId: persistedRunId }, "activity log referenced missing heartbeat run; retrying without run id");
+    logger.warn(
+      { runId: persistedRunId, action: input.action },
+      "activity log referenced missing heartbeat run; retrying without run id",
+    );
     persistedRunId = null;
     await db.insert(activityLog).values({ ...values, runId: null });
   }

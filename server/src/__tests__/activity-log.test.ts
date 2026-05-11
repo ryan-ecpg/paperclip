@@ -50,6 +50,10 @@ describe("logActivity", () => {
     expect(values).toHaveBeenCalledTimes(2);
     expect(values.mock.calls[0]?.[0]).toMatchObject({ runId: staleRunId });
     expect(values.mock.calls[1]?.[0]).toMatchObject({ runId: null });
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      { runId: staleRunId, action: "issue_comment_created" },
+      "activity log referenced missing heartbeat run; retrying without run id",
+    );
     expect(mockPublishLiveEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         payload: expect.objectContaining({ runId: null }),

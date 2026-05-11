@@ -28,6 +28,8 @@ const ACTIVITY_ACTION_TO_PLUGIN_EVENT: Readonly<Record<string, PluginEventType>>
 
 let _pluginEventBus: PluginEventBus | null = null;
 
+const ACTIVITY_LOG_RUN_ID_FK = "activity_log_run_id_heartbeat_runs_id_fk";
+
 /** Wire the plugin event bus so domain events are forwarded to plugins. */
 export function setPluginEventBus(bus: PluginEventBus): void {
   if (_pluginEventBus) {
@@ -62,6 +64,14 @@ export interface LogActivityInput {
   details?: Record<string, unknown> | null;
 }
 
+function isActivityRunIdForeignKeyError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as { code?: unknown; constraint?: unknown; constraint_name?: unknown; cause?: unknown };
+  const constraint = maybeError.constraint ?? maybeError.constraint_name;
+  if (maybeError.code === "23503" && constraint === ACTIVITY_LOG_RUN_ID_FK) return true;
+  return isActivityRunIdForeignKeyError(maybeError.cause);
+}
+
 export async function logActivity(db: Db, input: LogActivityInput) {
   const currentUserRedactionOptions = {
     enabled: (await instanceSettingsService(db).getGeneral()).censorUsernameInLogs,
@@ -70,7 +80,8 @@ export async function logActivity(db: Db, input: LogActivityInput) {
   const redactedDetails = sanitizedDetails
     ? redactCurrentUserValue(sanitizedDetails, currentUserRedactionOptions)
     : null;
-  await db.insert(activityLog).values({
+  let persistedRunId = input.runId ?? null;
+  const values = {
     companyId: input.companyId,
     actorType: input.actorType,
     actorId: input.actorId,
@@ -78,9 +89,17 @@ export async function logActivity(db: Db, input: LogActivityInput) {
     entityType: input.entityType,
     entityId: input.entityId,
     agentId: input.agentId ?? null,
-    runId: input.runId ?? null,
+    runId: persistedRunId,
     details: redactedDetails,
-  });
+  };
+  try {
+    await db.insert(activityLog).values(values);
+  } catch (error) {
+    if (!persistedRunId || !isActivityRunIdForeignKeyError(error)) throw error;
+    logger.warn({ runId: persistedRunId }, "activity log referenced missing heartbeat run; retrying without run id");
+    persistedRunId = null;
+    await db.insert(activityLog).values({ ...values, runId: null });
+  }
 
   publishLiveEvent({
     companyId: input.companyId,
@@ -92,7 +111,7 @@ export async function logActivity(db: Db, input: LogActivityInput) {
       entityType: input.entityType,
       entityId: input.entityId,
       agentId: input.agentId ?? null,
-      runId: input.runId ?? null,
+      runId: persistedRunId,
       details: redactedDetails,
     },
   });
@@ -111,7 +130,7 @@ export async function logActivity(db: Db, input: LogActivityInput) {
       payload: {
         ...redactedDetails,
         agentId: input.agentId ?? null,
-        runId: input.runId ?? null,
+        runId: persistedRunId,
       },
     };
     publishPluginDomainEvent(event);

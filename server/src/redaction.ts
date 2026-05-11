@@ -8,10 +8,10 @@ const GITHUB_TOKEN_TEXT_RE = /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/g;
 const SUPABASE_ACCESS_TOKEN_TEXT_RE = /\bsbp_[A-Za-z0-9_-]{20,}\b/g;
 const SUPABASE_SECRET_KEY_TEXT_RE = /\bsb_secret_[A-Za-z0-9_-]{20,}\b/g;
 const PAPERCLIP_TOKEN_TEXT_RE =
-  /\b[pP][cC][pP]_(?:[A-Za-z0-9-]{20,}|[A-Za-z0-9-]+_[A-Za-z0-9_-]{20,})\b/g;
+  /\b[pP][cC][pP]_(?:[A-Za-z0-9_-]{20,}|[A-Za-z0-9_-]+_[A-Za-z0-9_-]{20,})\b/g;
 const BWS_TOKEN_TEXT_RE = /\b[bB][wW][sS]_[A-Za-z0-9._-]{20,}\b/g;
 const BWS_ACCESS_TOKEN_TEXT_RE =
-  /\b0\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[A-Za-z0-9+/_=-]{16,}(?::[A-Za-z0-9+/_=-]{16,})?\b/gi;
+  /\b0\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[A-Za-z0-9+/_=-]{40,}(?::[A-Za-z0-9+/_=-]{20,})?\b/gi;
 const AUTHORIZATION_BEARER_TEXT_RE = /(\bAuthorization\s*:\s*Bearer\s+)[^\s"'`]+/gi;
 const ENV_SECRET_ASSIGNMENT_TEXT_RE =
   /(\b[A-Za-z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|AUTHORIZATION|JWT)[A-Za-z0-9_]*\s*=\s*)[^\s"'`]+/gi;

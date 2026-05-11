@@ -58,20 +58,21 @@ describe("redaction", () => {
 
   it("redacts known token shapes from event payload text fields", () => {
     const barePaperclipToken = `pcp_${"a".repeat(20)}`;
+    const underscoredBarePaperclipToken = `pcp_${"a".repeat(10)}_${"b".repeat(10)}`;
     const futurePaperclipToken = `pCp_futurekind_${"b".repeat(20)}`;
     const standardBwsToken = `bWs_${"c".repeat(20)}`;
-    const bwsMachineToken = `0.11111111-2222-3333-4444-555555555555.${"A".repeat(24)}`;
+    const bwsMachineToken = `0.11111111-2222-3333-4444-555555555555.${"A".repeat(40)}`;
     const bwsMachineTokenWithSuffix = `${bwsMachineToken}:${"B".repeat(24)}`;
 
     const result = redactEventPayload({
-      output: `open /invite/${barePaperclipToken}`,
+      output: `open /invite/${barePaperclipToken} retry /invite/${underscoredBarePaperclipToken}`,
       message: `future ${futurePaperclipToken} standard ${standardBwsToken}`,
       result: `machine ${bwsMachineToken} suffixed ${bwsMachineTokenWithSuffix}`,
       safe: "pcp_short bws_short",
     });
 
     expect(result).toEqual({
-      output: `open /invite/${REDACTED_EVENT_VALUE}`,
+      output: `open /invite/${REDACTED_EVENT_VALUE} retry /invite/${REDACTED_EVENT_VALUE}`,
       message: `future ${REDACTED_EVENT_VALUE} standard ${REDACTED_EVENT_VALUE}`,
       result: `machine ${REDACTED_EVENT_VALUE} suffixed ${REDACTED_EVENT_VALUE}`,
       safe: "pcp_short bws_short",
@@ -82,7 +83,7 @@ describe("redaction", () => {
     const input = {
       command: `open /invite/pcp_invite_${"a".repeat(20)}`,
       profile: `bWs_${"b".repeat(20)}`,
-      access: `0.11111111-2222-3333-4444-555555555555.${"A".repeat(24)}:${"B".repeat(24)}`,
+      access: `0.11111111-2222-3333-4444-555555555555.${"A".repeat(40)}:${"B".repeat(24)}`,
       safe: "plain",
     };
 
@@ -131,8 +132,9 @@ describe("redaction", () => {
       `Supabase access token ${supabaseToken}`,
       `Supabase secret key ${supabaseSecretKey}`,
       `Paperclip token pCp_claim_${"a".repeat(20)}`,
+      `Paperclip bare token pcp_${"a".repeat(10)}_${"b".repeat(10)}`,
       `BWS token bWs_${"b".repeat(20)}`,
-      `BWS access 0.11111111-2222-3333-4444-555555555555.${"A".repeat(24)}:${"B".repeat(24)}`,
+      `BWS access 0.11111111-2222-3333-4444-555555555555.${"A".repeat(40)}:${"B".repeat(24)}`,
       `Anthropic key ${anthropicKey}`,
       ...privateKeys,
       `session=${jwt}`,
@@ -152,6 +154,7 @@ describe("redaction", () => {
     expect(result).not.toContain(supabaseToken);
     expect(result).not.toContain(supabaseSecretKey);
     expect(result).not.toContain(`pCp_claim_${"a".repeat(20)}`);
+    expect(result).not.toContain(`pcp_${"a".repeat(10)}_${"b".repeat(10)}`);
     expect(result).not.toContain(`bWs_${"b".repeat(20)}`);
     expect(result).not.toContain("11111111-2222-3333-4444-555555555555");
     expect(result).not.toContain(anthropicKey);
